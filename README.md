@@ -26,6 +26,33 @@ frameworks above it (manutara, hopu).
 henua is NOT an ORM. It does not generate code. It does not impose
 migrations. It is a thin DDD vocabulary on top of kohau's adapters.
 
+## Foundational principle: henua builds on ahu
+
+**henua is built on top of [ahu](https://github.com/kaikailang-org/ahu),
+not on raw kaikai primitives.** Repositories, EventBus subscribers,
+and long-running domain services live as ahu cells (Layer 2) wrapped
+in restart helpers (Layer 3) when they need fault tolerance. The
+pure stateless functions (`save / find / delete` over an immutable
+repository value) are the *low-level* surface; the *ergonomic*
+surface that downstream code uses is the cell-wrapped form, which
+gives request/reply messaging, supervised lifecycle, and pipe
+composition.
+
+Concretely: any module that introduces persistence or event handling
+exposes both shapes — a pure function operating on a value, and a
+cell-based wrapper that runs the same operation inside an ahu cell.
+The pure form is for tests, fixtures, and prototyping; the cell form
+is for production.
+
+This is not optional. Implementations that bypass ahu — direct
+mutation, raw `spawn`, ad-hoc supervision — are out of scope for
+henua. If a use case can't be expressed via ahu primitives, the gap
+gets filed against ahu, not worked around inside henua.
+
+Implementer agents working on henua MUST read ahu's `docs/design.md`
+before writing module surfaces, and prefer ahu primitives over raw
+kaikai primitives wherever both are available.
+
 ## Layout
 
 ```
