@@ -1,0 +1,8 @@
+event: opened alice
+event: opened bob
+event: credited alice +100
+event: debited bob -30
+--- final ---
+account alice balance=100
+account bob balance=-30
+subscribers=1

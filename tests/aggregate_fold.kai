@@ -1,0 +1,30 @@
+# tests/aggregate_fold.kai — aggregate.fold_events replays a
+# sequence of events against an initial state.
+
+import henua.aggregate
+
+type Counter = { value: Int }
+type Ev = Inc | Dec | Zero
+
+fn step(c: Counter, ev: Ev) : Counter = match ev {
+  Inc  -> Counter { value: c.value + 1 }
+  Dec  -> Counter { value: c.value - 1 }
+  Zero -> Counter { value: 0 }
+}
+
+fn main() : Int / Stdout = {
+  let c0 = Counter { value: 0 }
+
+  let c1 = aggregate.apply_event(c0, Inc, step)
+  Stdout.print("after 1x Inc: " ++ int_to_string(c1.value))
+
+  let c2 = aggregate.fold_events(c0, [Inc, Inc, Inc, Inc, Dec], step)
+  Stdout.print("after [+++-+-]: " ++ int_to_string(c2.value))
+
+  let c3 = aggregate.fold_events(c2, [Zero, Inc], step)
+  Stdout.print("after [0,+]: " ++ int_to_string(c3.value))
+
+  let c4 = aggregate.fold_events(c0, [], step)
+  Stdout.print("empty fold: " ++ int_to_string(c4.value))
+  0
+}

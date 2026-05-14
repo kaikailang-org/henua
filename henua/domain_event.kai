@@ -1,0 +1,81 @@
+# henua/domain_event.kai — Domain event conventions.
+#
+# Imported by user code as `import henua.domain_event`; types stay
+# bare (`EventMeta`).
+#
+# A *domain event* is an immutable record of something that
+# happened in the domain — past tense, factual, and broadcastable.
+# `AccountCredited`, `OrderShipped`, `PaymentReceived` are domain
+# events; `CreditAccount` and `ShipOrder` are commands (intentions)
+# and do not belong here.
+#
+# Convention in henua: each bounded context defines a single sum
+# type listing every domain event the context can emit:
+#
+#   type LedgerEvent
+#     = AccountOpened(AccountId, AccountKind)
+#     | Credited(AccountId, Money)
+#     | Debited(AccountId, Money)
+#     | AccountClosed(AccountId)
+#
+# Why a sum type per context, not one mega-type for the whole
+# application: bounded contexts are independent; a `Ledger`
+# subscriber should not be forced to pattern-match `OrderShipped`
+# arms it does not care about. Cross-context flow goes through an
+# *integration event* (a separately-typed, persisted message) —
+# not by sharing the domain-event type. Integration events are
+# out of v1 scope; see `docs/design.md` §*Roadmap v0.2*.
+#
+# Why past tense, not `did_X` or `X_happened`: idiomatic DDD
+# convention from Evans/Vernon; preserves the "this is a fact"
+# semantics over "this is an intent".
+#
+# Why no `protocol DomainEvent`: every concrete event carries
+# different payload types; the only thing all events share is
+# `EventMeta` (timestamp + id), and that is composable as a
+# wrapper record rather than as a protocol method. Future
+# work (event sourcing in v0.2) may revisit this if a unified
+# serialization protocol becomes load-bearing.
+#
+# Spec: `docs/design.md` §*Domain events*.
+
+# Metadata that wraps any persisted event. v1 keeps this small —
+# event-sourcing setups in v0.2 will extend it with stream id,
+# version, and causation/correlation ids. For v1 use, the
+# `EventEnvelope[ev]` shape lets callers attach metadata without
+# polluting their domain event's sum type.
+#
+# `id` is a monotonic local counter (the caller's responsibility);
+# `at_unix_ms` is a millisecond Unix timestamp the caller obtains
+# from a `Clock` effect. henua does not call `Clock` itself
+# because v1 keeps the surface pure — any module that wanted to
+# `time.now()` would acquire a `Clock` effect row, and that would
+# bleed into every consumer of the helper.
+pub type EventMeta = { id: Int, at_unix_ms: Int }
+
+# Envelope wrapping a domain event with its metadata. Use when
+# the event needs to be persisted, replayed, or correlated; skip
+# when the event is only being passed to in-process subscribers
+# via `henua.event_bus` (the bus does not require an envelope —
+# it carries the bare event type).
+pub type EventEnvelope[ev] = { meta: EventMeta, event: ev }
+
+# Construct an envelope around an event with caller-supplied
+# id and timestamp. Kept trivial — there is no value in henua
+# allocating its own ids or fetching `time.now()` for callers,
+# because the caller often has a sequence (database autoincrement,
+# UUIDv7) and a clock (already in their effect row) it wants to
+# use coherently.
+pub fn envelope[ev](id: Int, at_unix_ms: Int, event: ev) : EventEnvelope[ev] =
+  EventEnvelope {
+    meta: EventMeta { id: id, at_unix_ms: at_unix_ms },
+    event: event
+  }
+
+# Extract the wrapped event. Trivial accessor; provided for
+# symmetry with `envelope` so call sites read uniformly.
+pub fn event_of[ev](e: EventEnvelope[ev]) : ev = e.event
+
+# Extract the metadata. Useful for subscribers that care about
+# ordering or timestamps without inspecting the payload.
+pub fn meta_of[ev](e: EventEnvelope[ev]) : EventMeta = e.meta

@@ -1,0 +1,10 @@
+registered: apple
+registered: banana-pro
+rejected 'Cherry': FormatMismatch(id must match ^[a-z][a-z0-9-]{0,31}$)
+rejected 'durian': Empty
+registered: elderberry
+--- catalog ---
+size=3
+product apple: Apple @ 150
+product banana-pro: Banana Pro @ 250
+product elderberry: Elderberry @ 75

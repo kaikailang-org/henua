@@ -1,0 +1,26 @@
+# tests/validation_numbers.kai — integer validation helpers.
+
+import henua.validation
+
+fn report(label: String, r: Result[ValidationError, Int]) : Unit / Stdout = match r {
+  Ok(n)  -> Stdout.print(label ++ ": Ok(" ++ int_to_string(n) ++ ")")
+  Err(e) -> Stdout.print(label ++ ": " ++ validation.validation_error_to_string(e))
+}
+
+fn main() : Int / Stdout = {
+  report("positive(-1)",     validation.positive_int(-1))
+  report("positive(0)",      validation.positive_int(0))
+  report("positive(1)",      validation.positive_int(1))
+  report("positive(99)",     validation.positive_int(99))
+
+  report("non_negative(-1)", validation.non_negative_int(-1))
+  report("non_negative(0)",  validation.non_negative_int(0))
+  report("non_negative(7)",  validation.non_negative_int(7))
+
+  report("between 1..10 of -1", validation.int_between(-1, 1, 10))
+  report("between 1..10 of 1",  validation.int_between(1, 1, 10))
+  report("between 1..10 of 5",  validation.int_between(5, 1, 10))
+  report("between 1..10 of 10", validation.int_between(10, 1, 10))
+  report("between 1..10 of 11", validation.int_between(11, 1, 10))
+  0
+}

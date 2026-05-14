@@ -1,0 +1,84 @@
+# henua/aggregate.kai — Aggregate root pattern.
+#
+# Imported by user code as `import henua.aggregate`.
+#
+# An *aggregate* in DDD is a cluster of associated objects treated
+# as a single unit for the purpose of data changes. The aggregate
+# root is the only member that outside objects are allowed to hold
+# references to; all access to the cluster goes through it.
+#
+# In henua, an aggregate is **a value type plus a step function**.
+# The value type holds the current state. The step function
+# (`apply(state, event) -> state`) folds a domain event into the
+# state to produce the next state. State is immutable; every
+# transition produces a new value.
+#
+# This is the same recursive shape `ahu.cell` uses for stateful
+# processes — and for the same reason: state-as-recursion-argument
+# is the kaikai-idiomatic way to write a state machine, and it
+# makes every transition explicit in the source.
+#
+# henua deliberately does **not** ship a `protocol Aggregate { ... }`
+# in v1, for two reasons:
+#
+#   1. kaikai protocols are pure (`kaikai/docs/protocols.md` §*With
+#      effects*) and single-dispatch on `Self`. An aggregate's
+#      `apply` function is naturally pure, but the protocol shape
+#      would force every aggregate's id field into the same
+#      `Self.Id` projection, which the typer cannot express without
+#      associated types (a feature kaikai deliberately does not
+#      have).
+#   2. Convention is more flexible than a protocol that captures
+#      only one of the common shapes. Some aggregates have natural
+#      ids (`AccountId`, `OrderId`); some are uniquely identified
+#      by a tuple of fields; some have a version field for
+#      optimistic concurrency. A v1 protocol would constrain those
+#      shapes prematurely.
+#
+# The convention every aggregate follows:
+#
+#   - Define a record type for the aggregate state.
+#   - Define a sum type for the domain events that change it.
+#   - Define an `apply(state, event) -> state` function (pure).
+#   - Define a way to extract the id (typically `acc.id` field
+#     access; for tuple-keyed aggregates, an `id_of` helper).
+#   - Persist via `henua.repository`; emit events via
+#     `henua.event_bus`.
+#
+# Helper functions in this module support the apply-fold pattern:
+# `fold_events` replays a list of events against an initial state,
+# which is the v1 building block for any future event-sourcing
+# support.
+#
+# Spec: `docs/design.md` §*Aggregate*.
+
+# Replay a sequence of events against an initial state by folding
+# the step function over them. This is the v1 building block for
+# both immediate event application (single event) and replay
+# (rebuild state from a recorded event stream).
+#
+# Effects: the step function carries its own row `/ e`; the fold
+# propagates it. A pure step function (no Console, no Db, no
+# random) gives a pure fold; an instrumented step function (with
+# Console tracing, for example) gives a Console fold.
+pub fn fold_events[s, ev, e](
+  initial: s,
+  events: [ev],
+  step: (s, ev) -> s / e
+) : s / e = match events {
+  []           -> initial
+  [ev1]        -> step(initial, ev1)
+  [ev1, ...rest] -> fold_events(step(initial, ev1), rest, step)
+}
+
+# Apply a single event. Trivial wrapper over the user's step
+# function, provided for symmetry with `fold_events` and so users
+# can pattern-match on a sequence of events uniformly:
+#
+#   let s1 = aggregate.apply_event(s0, event0, step)
+#   let s2 = aggregate.fold_events(s1, more_events, step)
+pub fn apply_event[s, ev, e](
+  state: s,
+  event: ev,
+  step: (s, ev) -> s / e
+) : s / e = step(state, event)

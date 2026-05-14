@@ -1,0 +1,2 @@
+find 42 in empty: Ok(None) (correct)
+find 99 after save 1: Ok(None) (correct)

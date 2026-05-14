@@ -1,0 +1,27 @@
+# tests/event_bus_unsubscribe.kai — unsubscribe removes a single
+# handler; later handlers shift down by one.
+
+import henua.event_bus
+
+type Ev = Tick | Tock
+
+fn a(_ev: Ev) : Unit / Stdout = Stdout.print("A fires")
+fn b(_ev: Ev) : Unit / Stdout = Stdout.print("B fires")
+fn c(_ev: Ev) : Unit / Stdout = Stdout.print("C fires")
+
+fn main() : Int / Stdout = {
+  let bus0 : InMemoryEventBus[Ev, Stdout] = event_bus.make_in_memory()
+  let s1 = event_bus.subscribe(bus0, a)
+  let s2 = event_bus.subscribe(s1.fst, b)
+  let s3 = event_bus.subscribe(s2.fst, c)
+  let bus_full = s3.fst
+  Stdout.print("--- before unsub ---")
+  event_bus.publish(bus_full, Tick)
+
+  # Drop B (index 1).
+  let bus_after = event_bus.unsubscribe(bus_full, s2.snd)
+  Stdout.print("after unsub count=" ++ int_to_string(event_bus.subscriber_count(bus_after)))
+  Stdout.print("--- after unsub ---")
+  event_bus.publish(bus_after, Tick)
+  0
+}
