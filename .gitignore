@@ -1,0 +1,6 @@
+kai.lock
+dist/
+target/
+*.tmp
+*.bak
+.DS_Store
