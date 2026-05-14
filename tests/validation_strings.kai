@@ -1,0 +1,25 @@
+# tests/validation_strings.kai — string validation helpers.
+
+import henua.validation
+
+fn report(label: String, r: Result[ValidationError, String]) : Unit / Stdout = match r {
+  Ok(s)  -> Stdout.print(label ++ ": Ok(" ++ s ++ ")")
+  Err(e) -> Stdout.print(label ++ ": " ++ validation.validation_error_to_string(e))
+}
+
+fn main() : Int / Stdout = {
+  report("non_empty(\"\")",    validation.non_empty_string(""))
+  report("non_empty(\"foo\")", validation.non_empty_string("foo"))
+  report("len 3..5 of \"\"",   validation.string_length_between("", 3, 5))
+  report("len 3..5 of \"hi\"", validation.string_length_between("hi", 3, 5))
+  report("len 3..5 of \"hey\"", validation.string_length_between("hey", 3, 5))
+  report("len 3..5 of \"hello!\"", validation.string_length_between("hello!", 3, 5))
+
+  # Chained validation: first non-empty, then length-bounded.
+  let composed =
+    validation.and_then(
+      validation.non_empty_string("ok"),
+      (s) => validation.string_length_between(s, 3, 8))
+  report("chain non_empty then len 3..8 of \"ok\"", composed)
+  0
+}

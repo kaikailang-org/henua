@@ -1,0 +1,143 @@
+# henua/validation.kai — Validation helpers.
+#
+# Imported by user code as `import henua.validation`; functions are
+# accessed dotted (`validation.non_empty_string(s)`); types stay
+# bare (`ValidationError`).
+#
+# Validation in henua is **predicate-based, not class-based**. There
+# is no `Validator` class with a `validate()` method. There is no
+# `Either` monad ceremony. There is a small set of helper functions
+# that check a base value against a refinement predicate and return
+# a `Result[ValidationError, T]`, plus a recommendation that
+# downstream code declare its domain types as kaikai refinement
+# types so the predicate lives in the type system rather than in
+# imperative checks.
+#
+# Two layers, used together:
+#
+# 1. **Declare the domain type as a refinement.** kaikai's
+#    refinement-types-lite (`kaikai/docs/refinements-and-contracts.md`)
+#    lets the consumer write:
+#
+#      type Email      = String where matches ~r/^[^@]+@[^@]+\.[^@]+$/
+#      type PositiveInt = Int    where >= 1
+#      type Slug        = String where matches ~r/^[a-z][a-z0-9-]{0,30}$/
+#
+#    A function that returns `Email` cannot return an arbitrary
+#    `String`; the typer narrows via `match x { e : Email -> ... }`
+#    or, at the point of parsing user input, the value is checked
+#    against the predicate before flowing further.
+#
+# 2. **Use henua's helpers at the boundary.** When the value comes
+#    from outside (HTTP body, CSV cell, user form), henua's
+#    helpers convert from `String` / `Int` to a validated base
+#    value and a `Result` capturing the failure. The caller then
+#    decides how to handle the failure — convert to a domain
+#    error, render to the user, accumulate into a batch error
+#    list, etc.
+#
+# Why no `Validator` protocol or `Either` monad: kaikai's
+# `Result[e, a]` is the canonical effect-free fallible-computation
+# carrier in stdlib (`stdlib/core/result.kai`), and refinement
+# types are the canonical way to express value invariants
+# (`kaikai/docs/refinements-and-contracts.md`). A henua-specific
+# Validator type would compete with both of those without adding
+# expressive power.
+#
+# Spec: `docs/design.md` §*Validation*.
+
+# Errors any henua validation helper may produce. `Empty` covers
+# empty-string / zero-length list cases; `OutOfRange` covers
+# numeric bound violations; `FormatMismatch` covers regex /
+# structural mismatches; `Custom` is the escape hatch for
+# domain-specific checks the helpers do not pre-cover.
+pub type ValidationError
+  = Empty
+  | OutOfRange(String)
+  | FormatMismatch(String)
+  | Custom(String)
+
+# Render a ValidationError as a human-readable string. Useful for
+# example/test output and `Stdout.print` traces; production code
+# typically pattern-matches on the variants directly.
+pub fn validation_error_to_string(e: ValidationError) : String = match e {
+  Empty             -> "Empty"
+  OutOfRange(msg)   -> "OutOfRange(" ++ msg ++ ")"
+  FormatMismatch(msg) -> "FormatMismatch(" ++ msg ++ ")"
+  Custom(msg)       -> "Custom(" ++ msg ++ ")"
+}
+
+# Reject empty strings. Returns the original string on success so
+# downstream code can use it without re-fetching:
+#
+#   match validation.non_empty_string(input) {
+#     Ok(s)  -> ...use s...
+#     Err(e) -> ...handle e...
+#   }
+pub fn non_empty_string(s: String) : Result[ValidationError, String] =
+  if string.length(s) == 0 { Err(Empty) } else { Ok(s) }
+
+# Require a string's length to fall within `[min, max]` inclusive.
+# Both bounds checked together — a single failing bound surfaces
+# as one `OutOfRange` error rather than separate min/max errors.
+pub fn string_length_between(
+  s: String,
+  min: Int,
+  max: Int
+) : Result[ValidationError, String] = {
+  let n = string.length(s)
+  if n < min {
+    Err(OutOfRange("length " ++ int_to_string(n) ++ " < min " ++ int_to_string(min)))
+  } else if n > max {
+    Err(OutOfRange("length " ++ int_to_string(n) ++ " > max " ++ int_to_string(max)))
+  } else {
+    Ok(s)
+  }
+}
+
+# Reject non-positive integers (allow only `n >= 1`). Matches the
+# `PositiveInt = Int where >= 1` refinement type convention. Use
+# `non_negative_int` for the `>= 0` case (which permits zero).
+pub fn positive_int(n: Int) : Result[ValidationError, Int] =
+  if n >= 1 { Ok(n) } else {
+    Err(OutOfRange(int_to_string(n) ++ " is not positive (must be >= 1)"))
+  }
+
+# Reject negative integers (allow `n >= 0`). Common for counts,
+# balances expressed in minor units, sequence numbers.
+pub fn non_negative_int(n: Int) : Result[ValidationError, Int] =
+  if n >= 0 { Ok(n) } else {
+    Err(OutOfRange(int_to_string(n) ++ " is negative (must be >= 0)"))
+  }
+
+# Range check on integers: require `min <= n <= max` inclusive.
+# Both bounds checked together as a single predicate.
+pub fn int_between(
+  n: Int,
+  min: Int,
+  max: Int
+) : Result[ValidationError, Int] = {
+  if n < min {
+    Err(OutOfRange(int_to_string(n) ++ " < min " ++ int_to_string(min)))
+  } else if n > max {
+    Err(OutOfRange(int_to_string(n) ++ " > max " ++ int_to_string(max)))
+  } else {
+    Ok(n)
+  }
+}
+
+# Compose two validation steps in sequence: if the first succeeds,
+# pass its result into the second. Symmetric with `result.and_then`
+# from stdlib but specialised to henua's `ValidationError` row so
+# the call site reads cleanly without explicit type ascriptions.
+#
+#   validation.and_then(
+#     validation.non_empty_string(raw),
+#     (s) => validation.string_length_between(s, 3, 64))
+pub fn and_then[a, b](
+  step: Result[ValidationError, a],
+  next: (a) -> Result[ValidationError, b]
+) : Result[ValidationError, b] = match step {
+  Ok(v)  -> next(v)
+  Err(e) -> Err(e)
+}

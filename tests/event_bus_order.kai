@@ -1,0 +1,24 @@
+# tests/event_bus_order.kai — InMemoryEventBus invokes subscribers
+# in registration order on publish.
+
+import henua.event_bus
+
+type Ev = Ping | Pong
+
+fn a(_ev: Ev) : Unit / Stdout = Stdout.print("A")
+fn b(_ev: Ev) : Unit / Stdout = Stdout.print("B")
+fn c(_ev: Ev) : Unit / Stdout = Stdout.print("C")
+
+fn main() : Int / Stdout = {
+  let bus0 : InMemoryEventBus[Ev, Stdout] = event_bus.make_in_memory()
+  let s1 = event_bus.subscribe(bus0, a)
+  let s2 = event_bus.subscribe(s1.fst, b)
+  let s3 = event_bus.subscribe(s2.fst, c)
+  let bus = s3.fst
+  Stdout.print("count=" ++ int_to_string(event_bus.subscriber_count(bus)))
+  Stdout.print("--- publish 1 ---")
+  event_bus.publish(bus, Ping)
+  Stdout.print("--- publish 2 ---")
+  event_bus.publish(bus, Ping)
+  0
+}

@@ -1,0 +1,7 @@
+non_empty(""): Empty
+non_empty("foo"): Ok(foo)
+len 3..5 of "": OutOfRange(length 0 < min 3)
+len 3..5 of "hi": OutOfRange(length 2 < min 3)
+len 3..5 of "hey": Ok(hey)
+len 3..5 of "hello!": OutOfRange(length 6 > max 5)
+chain non_empty then len 3..8 of "ok": OutOfRange(length 2 < min 3)

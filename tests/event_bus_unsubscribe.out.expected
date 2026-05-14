@@ -1,0 +1,8 @@
+--- before unsub ---
+A fires
+B fires
+C fires
+after unsub count=2
+--- after unsub ---
+A fires
+C fires

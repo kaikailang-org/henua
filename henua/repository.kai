@@ -1,0 +1,139 @@
+# henua/repository.kai — Repository pattern.
+#
+# Imported by user code as `import henua.repository`; functions are
+# accessed dotted (`repository.save(repo, entity)`, `repository.find(repo, id)`);
+# types stay bare (`InMemoryRepository[a, i]`, `RepositoryError`).
+#
+# The Repository pattern, in DDD terms, is the abstraction that
+# mediates between the domain model and the data mapping layer. In
+# henua v1 the abstraction is **convention-based, not protocol-based**:
+# every Repository implementation provides the same shape of
+# functions (`save`, `find`, `delete`) over its concrete type. The
+# kaikai protocol system is single-dispatch on `Self` and disallows
+# effect rows on protocol ops (`kaikai/docs/protocols.md` §*With
+# effects*), which makes it a poor fit for a polymorphic Repository
+# whose real implementations (Postgres, SQLite via `kohau`) carry
+# effect rows. Convention sidesteps that limitation cleanly.
+#
+# Each implementation lives in its own module:
+#
+#   `henua/repository.kai`           InMemoryRepository (this file)
+#   `henua/postgres_repository.kai`  PostgresRepository (future, via kohau)
+#   `henua/sqlite_repository.kai`    SqliteRepository  (future, via kohau)
+#
+# Downstream code names the concrete repository it wants. The
+# pattern — `save / find / delete` taking `(repo, ...)` and
+# returning `Result[RepositoryError, ...]` — is the contract.
+#
+# `InMemoryRepository[a, i]` is the reference implementation,
+# suitable for tests, in-memory fixtures, and prototyping. It is
+# backed by the stdlib `Map[i, a]` AVL carrier; all operations are
+# pure and return a fresh repository.
+#
+# Spec: `docs/design.md` §*Repository*.
+
+# Errors any Repository operation may produce. `NotFound` is
+# returned by `delete` for absent ids; `find` distinguishes
+# "absent" (`Ok(None)`) from "lookup failed for an infrastructure
+# reason" (`Err(Backend(...))`). The `Conflict` variant exists
+# for future adapters where uniqueness or optimistic-locking
+# violations are observable (e.g. Postgres unique-index conflict
+# during `save`).
+pub type RepositoryError
+  = NotFound
+  | Conflict(String)
+  | Backend(String)
+
+# Render a RepositoryError as a human-readable string. Useful for
+# example/test output and for `Stdout.print` traces; production
+# code typically pattern-matches on the variants directly.
+pub fn repository_error_to_string(e: RepositoryError) : String = match e {
+  NotFound      -> "NotFound"
+  Conflict(msg) -> "Conflict(" ++ msg ++ ")"
+  Backend(msg)  -> "Backend(" ++ msg ++ ")"
+}
+
+# In-memory Repository. Pure, immutable: `save` / `delete` return
+# a new `InMemoryRepository` with the updated state, leaving the
+# original untouched. This shape matches kaikai's functional core
+# and lets callers thread state explicitly rather than relying on
+# ambient mutation.
+#
+# `a` is the aggregate type (the value being stored). `i` is the
+# id type. The id type must be usable as a `Map` key — today that
+# means `Int`, `Real`, `Char`, or `String` (the kaikai runtime's
+# `<` operator is defined on these; records and sum types as keys
+# panic on first comparison, see `stdlib/collections/map.kai`).
+pub type InMemoryRepository[a, i] = { entries: Map[i, a] }
+
+# Construct an empty in-memory repository. Typically called once
+# at the start of a workflow, then threaded through:
+#
+#   let repo0 = repository.make_in_memory()
+#   match repository.save(repo0, id, account) {
+#     Ok(repo1) -> ...
+#     Err(_)    -> ...
+#   }
+pub fn make_in_memory() : InMemoryRepository[a, i] =
+  InMemoryRepository { entries: map_empty() }
+
+# Save (insert-or-replace) an entity under the provided id.
+# Returns a new repository containing the entity. Pure: never
+# fails for the in-memory implementation, so the `Result` always
+# resolves to `Ok`. Returning `Result` keeps the surface
+# uniform with future adapters whose `save` can genuinely fail
+# (e.g. Postgres unique-constraint violation surfaces as
+# `Err(Conflict(...))`).
+pub fn save(
+  repo: InMemoryRepository[a, i],
+  id: i,
+  entity: a
+) : Result[RepositoryError, InMemoryRepository[a, i]] =
+  Ok(InMemoryRepository { entries: map_put(repo.entries, id, entity) })
+
+# Look up an entity by id. Three outcomes:
+#
+#   Ok(Some(entity))  — entity present
+#   Ok(None)          — entity absent (not an error; the absence
+#                       is a valid result of a successful lookup)
+#   Err(Backend(...)) — infrastructure failed (never produced by
+#                       the in-memory adapter; reserved for
+#                       Postgres/SQLite adapters)
+#
+# The `Ok(None)` vs `Err(NotFound)` distinction matters: a domain
+# operation that needs an entity often wants to convert `Ok(None)`
+# to a domain error (`AccountNotKnown`) rather than treat it as an
+# infrastructure failure. Keeping them separate at this layer
+# leaves that decision to the caller.
+pub fn find(
+  repo: InMemoryRepository[a, i],
+  id: i
+) : Result[RepositoryError, Option[a]] =
+  Ok(map_get(repo.entries, id))
+
+# Remove an entity by id. Returns a new repository with the
+# entity gone. If the id was not present, returns
+# `Err(NotFound)` — `delete` is the one operation where "absent"
+# is an error condition (delete-of-a-ghost typically indicates
+# a logic bug or a stale reference). Callers that want a
+# tolerant delete should `match` on the error and ignore
+# `NotFound`.
+pub fn delete(
+  repo: InMemoryRepository[a, i],
+  id: i
+) : Result[RepositoryError, InMemoryRepository[a, i]] =
+  if map_contains(repo.entries, id) {
+    Ok(InMemoryRepository { entries: map_remove(repo.entries, id) })
+  } else {
+    Err(NotFound)
+  }
+
+# Number of entities currently stored. Convenience for tests and
+# diagnostics; production code rarely needs this.
+pub fn size(repo: InMemoryRepository[a, i]) : Int =
+  map_size(repo.entries)
+
+# Iterate all entities currently stored. Order is by id (the
+# `Map` carrier's iteration order — see `stdlib/collections/map.kai`).
+pub fn all(repo: InMemoryRepository[a, i]) : [a] =
+  map_values(repo.entries)

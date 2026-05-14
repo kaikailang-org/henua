@@ -1,0 +1,11 @@
+name = "henua"
+version = "0.0.1"
+
+[dependencies]
+# Self-dependency workaround for kaikai#567: `kai build` does not
+# treat the manifest directory as an implicit search path when
+# compiling files inside the package itself, so `examples/*/main.kai`
+# and `tests/*.kai` cannot resolve `import henua.repository` without
+# this explicit self-reference. Remove once kaikai#567 lands and
+# `kai build` adds the manifest directory automatically.
+henua = { path = "." }

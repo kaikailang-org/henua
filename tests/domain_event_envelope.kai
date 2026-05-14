@@ -1,0 +1,17 @@
+# tests/domain_event_envelope.kai — envelope wraps a domain event
+# with its metadata; meta_of and event_of project the parts.
+
+import henua.domain_event
+
+type Ev = Logged(String)
+
+fn main() : Int / Stdout = {
+  let env = domain_event.envelope(7, 1700000000000, Logged("login"))
+  let m = domain_event.meta_of(env)
+  Stdout.print("id=" ++ int_to_string(m.id))
+  Stdout.print("at=" ++ int_to_string(m.at_unix_ms))
+  match domain_event.event_of(env) {
+    Logged(name) -> Stdout.print("event=Logged(" ++ name ++ ")")
+  }
+  0
+}

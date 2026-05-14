@@ -1,0 +1,4 @@
+after 1x Inc: 1
+after [+++-+-]: 3
+after [0,+]: 1
+empty fold: 0

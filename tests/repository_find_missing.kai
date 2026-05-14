@@ -1,0 +1,26 @@
+# tests/repository_find_missing.kai — find on absent id returns
+# Ok(None), not Err(NotFound). The semantic distinction matters:
+# "lookup succeeded, entity absent" is not an infrastructure
+# failure.
+
+import henua.repository
+
+fn main() : Int / Stdout = {
+  let r : InMemoryRepository[String, Int] = repository.make_in_memory()
+  match repository.find(r, 42) {
+    Ok(None)    -> Stdout.print("find 42 in empty: Ok(None) (correct)")
+    Ok(Some(s)) -> Stdout.print("find 42 in empty: unexpected Some(" ++ s ++ ")")
+    Err(e)      -> Stdout.print("find 42 in empty: unexpected Err " ++ repository.repository_error_to_string(e))
+  }
+
+  let r1 = match repository.save(r, 1, "alpha") {
+    Ok(rr) -> rr
+    Err(_) -> r
+  }
+  match repository.find(r1, 99) {
+    Ok(None)    -> Stdout.print("find 99 after save 1: Ok(None) (correct)")
+    Ok(Some(s)) -> Stdout.print("find 99 after save 1: unexpected Some(" ++ s ++ ")")
+    Err(_)      -> Stdout.print("find 99 after save 1: unexpected Err")
+  }
+  0
+}

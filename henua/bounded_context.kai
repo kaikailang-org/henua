@@ -1,0 +1,79 @@
+# henua/bounded_context.kai — Bounded-context convention (doc only).
+#
+# Imported by user code as `import henua.bounded_context` purely so
+# that the convention is discoverable from the importer's tooling
+# (`kai effects --json`, future `kai lsp`). This module exports no
+# functions and no types; it is **documentation in code form**.
+#
+# # The convention
+#
+# A bounded context (Evans, *Domain-Driven Design*, 2003) is a
+# linguistic and conceptual boundary: a region of the codebase
+# inside which one ubiquitous language applies. Names, types,
+# events, and invariants mean exactly one thing inside the
+# boundary, and they are not assumed to mean the same thing
+# outside it. `Customer` in the Sales context is a different
+# concept from `Customer` in the Support context even if a
+# downstream report eventually links them.
+#
+# henua recommends — but does not enforce — that each bounded
+# context corresponds to one directory under the consumer's
+# source tree:
+#
+#   my_app/
+#     ledger/                # Ledger bounded context
+#       account.kai          # aggregate + events
+#       posting.kai          # commands / domain services
+#       events.kai           # type LedgerEvent = ...
+#     billing/               # Billing bounded context
+#       invoice.kai
+#       events.kai           # type BillingEvent = ... (independent)
+#     integration/           # cross-context glue (anti-corruption layer)
+#       ledger_to_billing.kai
+#
+# # Why convention, not enforcement
+#
+# kaikai has no built-in notion of bounded context. The substrate
+# provides:
+#
+#   - Modules (one `.kai` file = one module; `import` brings names
+#     into scope).
+#   - Privacy (`pub` vs default-private — `pub` is API; private is
+#     reorganisation margin).
+#   - The orphan rule (`kaikai/docs/protocols.md` §*Coherence
+#     rules*) prevents two contexts from each providing an `impl P
+#     for T` that would collide.
+#
+# Together these are sufficient: a bounded context is "everything
+# reachable from a directory's public surface". Two contexts that
+# share types only through their explicitly `pub` declarations are
+# already loosely coupled in the kaikai type system.
+#
+# Imposing a `bounded_context` decorator, macro, or runtime
+# registry would add machinery the language already provides via
+# modules + visibility. The trade-off favours the lightweight
+# convention.
+#
+# # The integration question
+#
+# When two contexts genuinely need to talk:
+#
+#   - **Synchronous calls** — Context A imports Context B's public
+#     functions. Type signatures cross the boundary directly; the
+#     boundary is a `pub fn` surface.
+#   - **Asynchronous events** — Context A publishes a domain event
+#     on its own `EventBus` (see `henua.event_bus`); Context B
+#     subscribes. Cross-context events are usually **integration
+#     events**, a separately-typed record specifically designed
+#     for inter-context communication. The integration event type
+#     lives in a third module (`integration/`) that depends on
+#     both contexts but is depended on by neither.
+#
+# v1 does not ship an `IntegrationEvent` type or a typed bus
+# router; the convention above is enough until usage data shows
+# the absence is load-bearing. The v0.2 roadmap revisits this
+# alongside event-sourcing primitives.
+#
+# # Spec
+#
+# `docs/design.md` §*Bounded contexts*.

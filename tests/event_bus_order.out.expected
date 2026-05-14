@@ -1,0 +1,9 @@
+count=3
+--- publish 1 ---
+A
+B
+C
+--- publish 2 ---
+A
+B
+C

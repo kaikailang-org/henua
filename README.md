@@ -6,8 +6,12 @@ ecosystem stack; consumes [kohau](https://github.com/kaikailang-org/kohau)
 for persistence and is consumed by [manutara](https://github.com/kaikailang-org/manutara)
 (web) and hopu (background jobs).
 
-> **Status:** scaffolding. Not production-ready, no v0.1 yet. Design
-> tracking against `docs/design.md`.
+> **Status:** v0.1 scaffolding shipped. Repository, EventBus,
+> Aggregate, Domain Event, Validation, and Bounded Context
+> conventions are in place with in-memory reference adapters.
+> Database-backed adapters (Postgres, SQLite via `kohau`) and
+> event-sourcing primitives are explicit v0.2 scope. Design and
+> roadmap live in `docs/design.md`.
 
 ## Why
 
@@ -49,27 +53,43 @@ Implementer agents working on henua MUST read ahu's `docs/design.md`
 before writing module surfaces, and prefer ahu primitives over raw
 kaikai primitives wherever both are available.
 
-## Layout (target)
+## Layout
 
 ```
 henua/
 ├── README.md
 ├── kai.toml
+├── Makefile                    # tier0/tier1 fixture drivers
 ├── docs/
-│   ├── design.md
-│   └── examples.md
+│   ├── design.md               # spec, decisions, roadmap
+│   └── examples.md             # walk-through of the example programs
 ├── henua/                      # the importable kaikai modules
-│   ├── repository.kai          # Repository[A, I] protocol + InMemory adapter
-│   ├── aggregate.kai           # Aggregate root patterns
-│   ├── domain_event.kai        # Domain event sum-type conventions
-│   ├── event_bus.kai           # EventBus[E] protocol + InMemory adapter
-│   ├── bounded_context.kai     # conventions doc, no code yet
-│   └── validation.kai          # refinement-type validation helpers
+│   ├── repository.kai          # Repository convention + InMemoryRepository[a, i]
+│   ├── aggregate.kai           # Aggregate apply / fold helpers
+│   ├── domain_event.kai        # EventMeta + EventEnvelope[ev] conventions
+│   ├── event_bus.kai           # EventBus convention + InMemoryEventBus[ev, e]
+│   ├── validation.kai          # refinement-type validation helpers
+│   └── bounded_context.kai     # doc-only module
 ├── examples/
-│   ├── ledger/                 # canonical ledger DDD example
-│   └── catalog/                # bounded-context demo
-└── tests/
-    └── ...                     # tier1 fixtures
+│   ├── ledger/                 # Repository + EventBus + Aggregate end-to-end
+│   └── catalog/                # Repository + refinement-type validation
+└── tests/                      # tier1 fixtures, each with .out.expected
+```
+
+## Building
+
+The kaikai toolchain (`kai`) on `PATH` is the only prerequisite.
+
+```sh
+make tier1                      # compile every fixture, diff stdout vs golden
+make clean                      # remove the build/ tree
+```
+
+Or directly:
+
+```sh
+kai build examples/ledger/main.kai  -o build/ledger
+kai build examples/catalog/main.kai -o build/catalog
 ```
 
 ## License

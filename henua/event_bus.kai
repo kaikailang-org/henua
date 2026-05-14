@@ -1,0 +1,136 @@
+# henua/event_bus.kai — In-process event bus.
+#
+# Imported by user code as `import henua.event_bus`; functions are
+# accessed dotted (`event_bus.publish(bus, event)`); types stay
+# bare (`InMemoryEventBus[ev, e]`).
+#
+# An event bus is the asynchronous side of the domain. While a
+# Repository commits state changes synchronously, a bus broadcasts
+# the *events* those changes produced to interested subscribers.
+# In henua v1 the bus is **in-process and synchronous**: a call to
+# `publish(bus, event)` invokes every registered handler in order
+# of registration before returning. There is no queue, no retry,
+# no cross-process delivery.
+#
+# This shape covers every v1 use case (in-process domain reactions,
+# audit trails written via a `Log` effect, test assertions). The
+# v0.2 roadmap covers asynchronous and cross-process variants
+# (persistent queues via `hopu`, message brokers, etc.) — see
+# `docs/design.md` §*Roadmap v0.2*.
+#
+# Why no `protocol EventBus`: handlers carry user-chosen effect
+# rows (a logging handler wants `/ Log`; an audit handler wants
+# `/ Db`; an integration handler wants `/ Net`). kaikai protocols
+# are pure, so a `protocol EventBus { publish(self, ev) : Unit }`
+# would force every implementor and every handler to be pure —
+# the wrong trade-off for the one feature the bus exists to
+# enable. Convention sidesteps it.
+#
+# The handler type carries an open row variable `e` so each
+# subscriber declares the effects it actually uses. When the
+# subscriber is purely in-process (`Stdout.print`), `e` resolves
+# to `Stdout`. When the subscriber writes to a database, `e`
+# carries the database effect. The bus itself propagates the
+# union into `publish`'s row.
+#
+# Spec: `docs/design.md` §*EventBus*.
+
+# A handler is a function from event to Unit, carrying whatever
+# effects the handler needs. The row variable is named explicitly
+# in `InMemoryEventBus[ev, e]` so the bus's storage and the
+# handler signature share it.
+pub type Handler[ev, e] = (ev) -> Unit / e
+
+# In-memory bus: a list of handlers indexed by registration order.
+# All registered handlers must share the same row `e`. Callers
+# whose handlers have divergent effect rows must convert them at
+# registration time (`handle { ... } with X { ... }` to discharge
+# the extra effects before wrapping the function as a handler).
+#
+# `handlers` is `[Handler[ev, e]]` rather than a `Map` because
+# v1 has no need to look up a specific handler — every publish
+# walks the whole list. Removing a handler is an explicit lane
+# (`unsubscribe`) that takes the index returned by `subscribe`.
+pub type InMemoryEventBus[ev, e] = { handlers: [Handler[ev, e]] }
+
+# Construct an empty bus. The phantom row `e` is inferred from
+# the type of handlers added later; an empty bus typechecks
+# against any concrete `e` until the first handler pins it.
+pub fn make_in_memory() : InMemoryEventBus[ev, e] =
+  InMemoryEventBus { handlers: [] }
+
+# Register a handler. Returns a fresh bus plus the index of the
+# new handler (later passed to `unsubscribe` to remove it).
+# Indices are stable for the lifetime of the bus value because
+# `unsubscribe` shifts the underlying list — see the note in
+# `unsubscribe` below.
+pub fn subscribe(
+  bus: InMemoryEventBus[ev, e],
+  handler: Handler[ev, e]
+) : Pair[InMemoryEventBus[ev, e], Int] = {
+  let new_handlers = append_handler(bus.handlers, handler)
+  Pair {
+    fst: InMemoryEventBus { handlers: new_handlers },
+    snd: list.length(bus.handlers)
+  }
+}
+
+# Internal: append a single handler to the end of the list.
+# Subscription order matters (publish walks in order), so the
+# stdlib `[x, ...rest]` shorthand would put new handlers at the
+# head instead — hence the explicit traversal.
+fn append_handler(xs: [Handler[ev, e]], h: Handler[ev, e]) : [Handler[ev, e]] = match xs {
+  []           -> [h]
+  [x]          -> [x, h]
+  [x, ...rest] -> [x, ...append_handler(rest, h)]
+}
+
+# Broadcast an event to every subscriber, in subscription order.
+# Effects of every handler accumulate into the bus's `e` row,
+# which flows back to the caller's row.
+#
+# Synchronous: returns only after every handler has run. Errors
+# raised by a handler are not caught (handlers that need
+# fault-isolation should wrap their own body in a `handle`
+# block); a panic from one handler aborts the publish and
+# subsequent handlers do not run. v1's posture is "trust the
+# handler set"; in v0.2 an explicit fault-isolated bus variant
+# may ship.
+pub fn publish(bus: InMemoryEventBus[ev, e], event: ev) : Unit / e =
+  publish_loop(bus.handlers, event)
+
+fn publish_loop[ev, e](handlers: [Handler[ev, e]], event: ev) : Unit / e =
+  match handlers {
+    []           -> ()
+    [h]          -> h(event)
+    [h, ...rest] -> {
+      h(event)
+      publish_loop(rest, event)
+    }
+  }
+
+# Number of subscribers. Diagnostic helper.
+pub fn subscriber_count(bus: InMemoryEventBus[ev, e]) : Int =
+  list.length(bus.handlers)
+
+# Remove the handler at the given index (returned by `subscribe`).
+# Returns a fresh bus with the handler removed; handlers after
+# the removed one shift down by one. Out-of-range indices are
+# treated as no-ops (the resulting bus is identical to the input).
+#
+# Index instability after `unsubscribe`: this is the same
+# trade-off `subscribe` accepts when it returns the count.
+# Callers who need stable identifiers across removals should
+# track their own subscription id externally; v1 keeps the bus
+# minimal.
+pub fn unsubscribe(
+  bus: InMemoryEventBus[ev, e],
+  index: Int
+) : InMemoryEventBus[ev, e] =
+  InMemoryEventBus { handlers: remove_at(bus.handlers, index, 0) }
+
+fn remove_at(xs: [t], target: Int, i: Int) : [t] = match xs {
+  []           -> []
+  [x]          -> if i == target { [] } else { [x] }
+  [x, ...rest] -> if i == target { rest } else { [x, ...remove_at(rest, target, i + 1)] }
+}

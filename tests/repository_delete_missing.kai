@@ -1,0 +1,15 @@
+# tests/repository_delete_missing.kai — delete on absent id
+# returns Err(NotFound). This is the one operation where
+# "entity not present" is genuinely an error.
+
+import henua.repository
+
+fn main() : Int / Stdout = {
+  let r : InMemoryRepository[Int, Int] = repository.make_in_memory()
+  match repository.delete(r, 7) {
+    Err(NotFound) -> Stdout.print("delete 7 in empty: NotFound (correct)")
+    Ok(_)         -> Stdout.print("delete 7 in empty: unexpected Ok")
+    Err(e)        -> Stdout.print("delete 7 in empty: " ++ repository.repository_error_to_string(e))
+  }
+  0
+}

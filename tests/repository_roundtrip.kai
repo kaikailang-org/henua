@@ -1,0 +1,59 @@
+# tests/repository_roundtrip.kai — InMemoryRepository basics.
+#
+# Coverage:
+#   - make_in_memory() yields size 0
+#   - save returns Ok with size incremented
+#   - find returns Ok(Some(entity)) for present id
+#   - save twice on same id replaces (size still 1)
+#   - delete returns Ok and size decrements
+
+import henua.repository
+
+type User = { name: String, age: Int }
+
+fn main() : Int / Stdout = {
+  let r0 : InMemoryRepository[User, Int] = repository.make_in_memory()
+  Stdout.print("empty size=" ++ int_to_string(repository.size(r0)))
+
+  let alice = User { name: "alice", age: 30 }
+  let bob   = User { name: "bob",   age: 25 }
+
+  let r1 = match repository.save(r0, 1, alice) {
+    Ok(r)  -> r
+    Err(_) -> r0
+  }
+  Stdout.print("after save 1 size=" ++ int_to_string(repository.size(r1)))
+
+  let r2 = match repository.save(r1, 2, bob) {
+    Ok(r)  -> r
+    Err(_) -> r1
+  }
+  Stdout.print("after save 2 size=" ++ int_to_string(repository.size(r2)))
+
+  match repository.find(r2, 1) {
+    Ok(Some(u)) -> Stdout.print("find 1: " ++ u.name ++ " age=" ++ int_to_string(u.age))
+    Ok(None)    -> Stdout.print("find 1: None")
+    Err(e)      -> Stdout.print("find 1: err " ++ repository.repository_error_to_string(e))
+  }
+
+  # Replace alice's age (same id).
+  let alice2 = User { name: "alice", age: 31 }
+  let r3 = match repository.save(r2, 1, alice2) {
+    Ok(r)  -> r
+    Err(_) -> r2
+  }
+  Stdout.print("after replace size=" ++ int_to_string(repository.size(r3)))
+  match repository.find(r3, 1) {
+    Ok(Some(u)) -> Stdout.print("find 1 after replace: " ++ u.name ++ " age=" ++ int_to_string(u.age))
+    Ok(None)    -> Stdout.print("find 1 after replace: None")
+    Err(_)      -> Stdout.print("find 1 after replace: err")
+  }
+
+  # Delete bob.
+  let r4 = match repository.delete(r3, 2) {
+    Ok(r)  -> r
+    Err(_) -> r3
+  }
+  Stdout.print("after delete 2 size=" ++ int_to_string(repository.size(r4)))
+  0
+}

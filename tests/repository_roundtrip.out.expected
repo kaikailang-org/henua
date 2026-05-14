@@ -1,0 +1,7 @@
+empty size=0
+after save 1 size=1
+after save 2 size=2
+find 1: alice age=30
+after replace size=2
+find 1 after replace: alice age=31
+after delete 2 size=1
