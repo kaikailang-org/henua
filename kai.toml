@@ -1,4 +1,23 @@
 name = "henua"
 version = "0.0.1"
+edition = "hanga-roa"
 
 [dependencies]
+
+# kohau (SQLite via C shim) — local path while v0.1 is unreleased.
+# henua/sqlite_repository.kai imports kohau.sqlite directly. The
+# Makefile resolves the same module path via `--path . --path
+# ../kohau` so in-tree fixtures see both packages.
+kohau = { path = "../kohau" }
+
+# henua's tier1 SQLite-repository fixtures import #[unstable]
+# declarations from both kohau.sqlite (low-level surface, v0.1)
+# and henua.sqlite_repository (the adapter shipped in this
+# package). Opting in here acknowledges the disclosure for the
+# in-tree fixtures so the build is warning-free. Downstream
+# consumers do the same in their own kai.toml.
+[unstable]
+henua = true
+sqlite = true
+kohau = true
+sqlite_repository = true
