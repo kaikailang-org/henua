@@ -1,0 +1,361 @@
+# henua/sqlite_repository.kai — SQLite-backed Repository adapter.
+#
+# Imported by user code as `import henua.sqlite_repository`; types
+# stay bare (`SqliteRepository[a, i]`, `RepositoryCodec[a, i]`),
+# functions are accessed dotted
+# (`sqlite_repository.save(repo, id, entity)`).
+#
+# This is the persistent counterpart of `InMemoryRepository[a, i]`
+# from `henua/repository.kai`. Same shape — `save / find / delete`
+# taking `(repo, ...)` and returning
+# `Result[RepositoryError, ...]` — same `RepositoryError` sum, but
+# every operation carries `Ffi` in its row because the storage
+# medium is libsqlite3 behind a C shim (`kohau.sqlite`).
+#
+# ## Shape decision: OPTION A (inline serializer record)
+#
+# The persistent adapter has to bridge a polymorphic kaikai type
+# `a` (the aggregate) and a polymorphic id type `i` to concrete
+# SQL TEXT columns. Three shapes were considered:
+#
+#   A) Carry serialiser functions on the repository value itself
+#      (a `RepositoryCodec[a, i]` record with `to_row`, `from_row`,
+#      `id_to_string`, `id_from_string`).
+#   B) Specialise the adapter per aggregate type (one module per
+#      entity — `sqlite_repository_todo.kai`, etc.).
+#   C) Define a side-channel protocol/convention the caller
+#      implements separately, the adapter looks it up by name.
+#
+# A was picked because (probed against kaikai 0.72.1) the typer
+# accepts records that carry pure function fields polymorphic in
+# `a, i`, and those records flow through consumer functions whose
+# rows contain `Ffi` without complaint. B forces a module per
+# entity which kills the polymorphism — fine for one aggregate,
+# embarrassing for a system with five. C adds a layer of
+# indirection (named registry) for no win over A, and kaikai has
+# no global registries by design (see ahu §*Decision 4*).
+#
+# The cost of A: the caller assembles four small functions when
+# they construct the repository. That cost lands once at
+# bootstrap and reads naturally. The benefit: the adapter stays
+# one module, polymorphic, with the same surface InMemory has.
+#
+# ## Schema (v1, minimal)
+#
+# The adapter assumes / creates a table with exactly two columns:
+#
+#   CREATE TABLE <name> (
+#     id   TEXT PRIMARY KEY,
+#     data TEXT NOT NULL
+#   )
+#
+# `id` is the result of `codec.id_to_string(i)`. `data` is the
+# serialised entity — `codec.to_row(a)` is joined with the
+# `delim` field (default `|` — ASCII pipe). The caller can
+# override the delimiter via `make_sqlite_with_delim` if their
+# data can contain pipes (or upgrade to OPTION C in a later
+# version that lets the codec own marshalling end-to-end).
+#
+# This schema is intentionally tight. A richer schema (typed
+# columns, indices, secondary keys) is the job of a future
+# `sqlite_repository_v2` or of consumers that maintain their
+# own table and pass a pre-opened `db`. See "v1 limitations"
+# below for the explicit non-goals.
+#
+# ## v1 limitations
+#
+# - No transactions — every `save` / `delete` is its own
+#   statement. Atomicity across multiple operations is the
+#   caller's responsibility (wrap with `sqlite.exec(db, "BEGIN")`
+#   / `"COMMIT"`).
+# - No `all` / `size` over the persistent store — `size` would
+#   require a `SELECT COUNT(*)` per call, and `all` would require
+#   row deserialisation which depends on the codec being
+#   round-trip clean. Both land when a fixture motivates them;
+#   v1 covers only the four operations the demo needs.
+# - The codec is required to round-trip — `from_row(to_row(x)) ==
+#   Some(x)` — but the adapter does not enforce this. Codec bugs
+#   surface as `Ok(None)` from `find`, which the caller will
+#   misread as "absent".
+# - The connection (`db: Int`) is borrowed, not owned. The caller
+#   opens it with `sqlite.open` and closes it with `sqlite.close`
+#   when done; the adapter never closes the connection on its
+#   own. This matches the kohau v0.1 surface — connection
+#   lifecycle moves into `kohau.sqlite.client` once that lands.
+#
+# ## Stability
+#
+# Every `pub` is `#[unstable]` for the Hanga Roa edition. The
+# shape decision (A) is provisional; if domain code starts
+# wanting typed columns, indices, or batched I/O the surface
+# will reshape and this module will move out from under the
+# `#[unstable]` gate only once the demo proves the cell-wrapped
+# `kohau.sqlite.client` is what should sit underneath henua,
+# not the low-level surface.
+
+import henua.repository
+import kohau.sqlite
+
+# Serialiser bundle. Pure functions only — no effects in the
+# closures. The four-arrow surface is small enough that callers
+# inline it at construction without ceremony.
+#
+# `to_row` / `from_row` MUST round-trip: for every `x`,
+# `from_row(to_row(x))` must be `Some(x)`. The adapter does not
+# enforce this; codec bugs surface as `Ok(None)` from `find`.
+#
+# `id_from_string` is allowed to fail (`Option[i]`) because ids
+# come back from SQLite as text and a malformed row in the
+# database is not unrecoverable — the adapter folds it into
+# `Err(Backend(...))`.
+pub type RepositoryCodec[a, i] = {
+  to_row:         (a) -> [String],
+  from_row:       ([String]) -> Option[a],
+  id_to_string:   (i) -> String,
+  id_from_string: (String) -> Option[i]
+}
+
+# Persistent repository value. Carries the borrowed connection
+# handle, the table name, the codec, and the delimiter used to
+# join / split the row vector into the `data` TEXT column.
+#
+# Threading the repository through `save` / `delete` like the
+# in-memory adapter would be a lie here: the underlying storage
+# mutates regardless of whether the caller threads the result.
+# The signature still returns `Result[RepositoryError,
+# SqliteRepository[a, i]]` so the surface matches InMemory; the
+# returned value is the *same* repository, unchanged. This keeps
+# `match` ergonomics identical across adapters.
+pub type SqliteRepository[a, i] = {
+  db:    Int,
+  table: String,
+  delim: String,
+  codec: RepositoryCodec[a, i]
+}
+
+# Construct an adapter. Creates the table if it does not exist
+# (`CREATE TABLE IF NOT EXISTS`). Returns
+# `Err(Backend(errmsg))` if the DDL fails — the caller has
+# typically just called `sqlite.open`, so the connection itself
+# is fine; the failure is almost always a permissions or
+# disk-full situation.
+#
+# The default delimiter is `|` (ASCII pipe). v1 keeps it
+# printable so fixtures can eyeball the stored `data` column
+# without a hex dump; if the codec emits strings that can
+# contain pipes, call `make_sqlite_with_delim` and pass a
+# delimiter the codec guarantees never to emit.
+#[unstable]
+pub fn make_sqlite(
+  db: Int,
+  table: String,
+  codec: RepositoryCodec[a, i]
+) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
+  let sql =
+    "CREATE TABLE IF NOT EXISTS " ++ table ++
+    " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+  let rc = sqlite.exec(db, sql)
+  if rc == 0 {
+    Ok(SqliteRepository {
+      db: db,
+      table: table,
+      delim: "|",
+      codec: codec
+    })
+  } else {
+    Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+  }
+}
+
+# Variant of `make_sqlite` that lets the caller pick a custom
+# delimiter (useful when the codec emits unit-separator bytes).
+#[unstable]
+pub fn make_sqlite_with_delim(
+  db: Int,
+  table: String,
+  delim: String,
+  codec: RepositoryCodec[a, i]
+) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
+  let sql =
+    "CREATE TABLE IF NOT EXISTS " ++ table ++
+    " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+  let rc = sqlite.exec(db, sql)
+  if rc == 0 {
+    Ok(SqliteRepository {
+      db: db,
+      table: table,
+      delim: delim,
+      codec: codec
+    })
+  } else {
+    Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+  }
+}
+
+# Join / split helpers — local thin wrappers over the runtime
+# `string_concat` / `string_split` primitives. We do not import
+# the stdlib `string` module to keep the module's dependency
+# surface minimal (`henua.repository` and `kohau.sqlite` only);
+# the primitives are in the PRELUDE table so they resolve bare.
+fn join_with(items: [String], sep: String) : String =
+  match items {
+    []         -> ""
+    [x]        -> x
+    [x, ...xs] -> x ++ sep ++ join_with(xs, sep)
+  }
+
+fn split_with(s: String, sep: String) : [String] =
+  string_split(s, sep)
+
+# Save (insert-or-replace). The `Result` surface mirrors
+# InMemory; the returned repository is the same `repo` (storage
+# already mutated), but the `match` shape is identical so
+# callers can swap adapters without rewriting handlers.
+#[unstable]
+pub fn save(
+  repo: SqliteRepository[a, i],
+  id: i,
+  entity: a
+) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
+  let id_s   = repo.codec.id_to_string(id)
+  let row    = repo.codec.to_row(entity)
+  let data_s = join_with(row, repo.delim)
+  let sql =
+    "INSERT OR REPLACE INTO " ++ repo.table ++
+    " (id, data) VALUES (?, ?)"
+  let stmt = sqlite.prepare(repo.db, sql)
+  if stmt == 0 {
+    Err(Backend("prepare INSERT failed: " ++ sqlite.errmsg(repo.db)))
+  } else {
+    let rc_bind_id = sqlite.bind_text(stmt, 1, id_s)
+    if rc_bind_id != 0 {
+      let _ = sqlite.finalize(stmt)
+      Err(Backend("bind id failed: " ++ sqlite.errmsg(repo.db)))
+    } else {
+      let rc_bind_data = sqlite.bind_text(stmt, 2, data_s)
+      if rc_bind_data != 0 {
+        let _ = sqlite.finalize(stmt)
+        Err(Backend("bind data failed: " ++ sqlite.errmsg(repo.db)))
+      } else {
+        let rc_step = sqlite.step(stmt)
+        let _ = sqlite.finalize(stmt)
+        # SQLITE_DONE == 101
+        if rc_step == 101 {
+          Ok(repo)
+        } else {
+          Err(Backend("step INSERT failed: " ++ sqlite.errmsg(repo.db)))
+        }
+      }
+    }
+  }
+}
+
+# Look up an entity by id.
+#
+#   Ok(Some(entity))  — id present, codec round-tripped clean
+#   Ok(None)          — id absent (or codec failed to parse the
+#                       stored row — the adapter cannot tell
+#                       these apart without a third return arm)
+#   Err(Backend(...)) — SQLite-side failure
+#
+# v1 collapses "absent" and "stored row malformed" into
+# `Ok(None)`. A future version may add a `MalformedRow` variant
+# to `RepositoryError` once a fixture demonstrates the
+# distinction matters; today the demo's codec is the trivial
+# CSV-of-strings shape and "malformed" can only happen if
+# someone else writes to the table.
+#[unstable]
+pub fn find(
+  repo: SqliteRepository[a, i],
+  id: i
+) : Result[RepositoryError, Option[a]] / Ffi = {
+  let id_s = repo.codec.id_to_string(id)
+  let sql  = "SELECT data FROM " ++ repo.table ++ " WHERE id = ?"
+  let stmt = sqlite.prepare(repo.db, sql)
+  if stmt == 0 {
+    Err(Backend("prepare SELECT failed: " ++ sqlite.errmsg(repo.db)))
+  } else {
+    let rc_bind = sqlite.bind_text(stmt, 1, id_s)
+    if rc_bind != 0 {
+      let _ = sqlite.finalize(stmt)
+      Err(Backend("bind id failed: " ++ sqlite.errmsg(repo.db)))
+    } else {
+      let rc_step = sqlite.step(stmt)
+      # SQLITE_ROW == 100
+      if rc_step == 100 {
+        let data_s = sqlite.column_text(stmt, 0)
+        let _ = sqlite.finalize(stmt)
+        let row = split_with(data_s, repo.delim)
+        Ok(repo.codec.from_row(row))
+      } else {
+        let _ = sqlite.finalize(stmt)
+        # SQLITE_DONE == 101 means no rows; anything else is an error.
+        if rc_step == 101 {
+          Ok(None)
+        } else {
+          Err(Backend("step SELECT failed: " ++ sqlite.errmsg(repo.db)))
+        }
+      }
+    }
+  }
+}
+
+# Remove an entity by id. `Err(NotFound)` if the id is absent —
+# matches the InMemory adapter semantics. The adapter relies on
+# `sqlite.changes(db)` to detect the absent case after a
+# successful DELETE (a no-op DELETE returns DONE).
+#[unstable]
+pub fn delete(
+  repo: SqliteRepository[a, i],
+  id: i
+) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
+  let id_s = repo.codec.id_to_string(id)
+  let sql  = "DELETE FROM " ++ repo.table ++ " WHERE id = ?"
+  let stmt = sqlite.prepare(repo.db, sql)
+  if stmt == 0 {
+    Err(Backend("prepare DELETE failed: " ++ sqlite.errmsg(repo.db)))
+  } else {
+    let rc_bind = sqlite.bind_text(stmt, 1, id_s)
+    if rc_bind != 0 {
+      let _ = sqlite.finalize(stmt)
+      Err(Backend("bind id failed: " ++ sqlite.errmsg(repo.db)))
+    } else {
+      let rc_step = sqlite.step(stmt)
+      let _ = sqlite.finalize(stmt)
+      # SQLITE_DONE == 101
+      if rc_step == 101 {
+        if sqlite.changes(repo.db) == 0 {
+          Err(NotFound)
+        } else {
+          Ok(repo)
+        }
+      } else {
+        Err(Backend("step DELETE failed: " ++ sqlite.errmsg(repo.db)))
+      }
+    }
+  }
+}
+
+# Convenience: number of rows in the table. Issues a
+# `SELECT COUNT(*)`. Useful for fixture assertions; production
+# code should avoid relying on counts that are computed each
+# call.
+#[unstable]
+pub fn size(repo: SqliteRepository[a, i]) : Result[RepositoryError, Int] / Ffi = {
+  let sql  = "SELECT COUNT(*) FROM " ++ repo.table
+  let stmt = sqlite.prepare(repo.db, sql)
+  if stmt == 0 {
+    Err(Backend("prepare COUNT failed: " ++ sqlite.errmsg(repo.db)))
+  } else {
+    let rc_step = sqlite.step(stmt)
+    # SQLITE_ROW == 100
+    if rc_step == 100 {
+      let n = sqlite.column_int(stmt, 0)
+      let _ = sqlite.finalize(stmt)
+      Ok(n)
+    } else {
+      let _ = sqlite.finalize(stmt)
+      Err(Backend("step COUNT failed: " ++ sqlite.errmsg(repo.db)))
+    }
+  }
+}
