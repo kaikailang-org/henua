@@ -1,0 +1,10 @@
+empty size=0
+save 1: ok
+after save 1 size=1
+find 1: buy milk done=false
+save 1 (replace): ok
+after replace size=1
+find 1 after replace: buy milk done=true
+delete 1: ok
+after delete size=0
+find 1 after delete: None
