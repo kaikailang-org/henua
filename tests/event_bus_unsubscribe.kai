@@ -3,11 +3,11 @@
 
 import henua.event_bus
 
-type Ev = Tick | Tock
+pub type Ev = Tick | Tock
 
-fn a(_ev: Ev) : Unit / Stdout = Stdout.print("A fires")
-fn b(_ev: Ev) : Unit / Stdout = Stdout.print("B fires")
-fn c(_ev: Ev) : Unit / Stdout = Stdout.print("C fires")
+pub fn a(_ev: Ev) : Unit / Stdout = Stdout.print("A fires")
+pub fn b(_ev: Ev) : Unit / Stdout = Stdout.print("B fires")
+pub fn c(_ev: Ev) : Unit / Stdout = Stdout.print("C fires")
 
 fn main() : Int / Stdout = {
   let bus0 : InMemoryEventBus[Ev, Stdout] = event_bus.make_in_memory()
