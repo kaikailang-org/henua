@@ -19,6 +19,8 @@
 # Spec context: docs/design.md §*Validation* and §*Repository*,
 # plus docs/examples.md walkthrough.
 
+import regexp
+import regexp.{matches}
 import henua.repository
 import henua.validation
 

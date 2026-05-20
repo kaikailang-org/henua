@@ -32,6 +32,8 @@
 #
 # Spec: `docs/design.md` §*Repository*.
 
+import collections.map
+
 # Errors any Repository operation may produce. `NotFound` is
 # returned by `delete` for absent ids; `find` distinguishes
 # "absent" (`Ok(None)`) from "lookup failed for an infrastructure
@@ -75,7 +77,7 @@ pub type InMemoryRepository[a, i] = { entries: Map[i, a] }
 #     Err(_)    -> ...
 #   }
 pub fn make_in_memory() : InMemoryRepository[a, i] =
-  InMemoryRepository { entries: map_empty() }
+  InMemoryRepository { entries: map.empty() }
 
 # Save (insert-or-replace) an entity under the provided id.
 # Returns a new repository containing the entity. Pure: never
@@ -89,7 +91,7 @@ pub fn save(
   id: i,
   entity: a
 ) : Result[RepositoryError, InMemoryRepository[a, i]] =
-  Ok(InMemoryRepository { entries: map_put(repo.entries, id, entity) })
+  Ok(InMemoryRepository { entries: map.put(repo.entries, id, entity) })
 
 # Look up an entity by id. Three outcomes:
 #
@@ -109,7 +111,7 @@ pub fn find(
   repo: InMemoryRepository[a, i],
   id: i
 ) : Result[RepositoryError, Option[a]] =
-  Ok(map_get(repo.entries, id))
+  Ok(map.get(repo.entries, id))
 
 # Remove an entity by id. Returns a new repository with the
 # entity gone. If the id was not present, returns
@@ -122,8 +124,8 @@ pub fn delete(
   repo: InMemoryRepository[a, i],
   id: i
 ) : Result[RepositoryError, InMemoryRepository[a, i]] =
-  if map_contains(repo.entries, id) {
-    Ok(InMemoryRepository { entries: map_remove(repo.entries, id) })
+  if map.contains(repo.entries, id) {
+    Ok(InMemoryRepository { entries: map.remove(repo.entries, id) })
   } else {
     Err(NotFound)
   }
@@ -131,9 +133,9 @@ pub fn delete(
 # Number of entities currently stored. Convenience for tests and
 # diagnostics; production code rarely needs this.
 pub fn size(repo: InMemoryRepository[a, i]) : Int =
-  map_size(repo.entries)
+  map.size(repo.entries)
 
 # Iterate all entities currently stored. Order is by id (the
 # `Map` carrier's iteration order — see `stdlib/collections/map.kai`).
 pub fn all(repo: InMemoryRepository[a, i]) : [a] =
-  map_values(repo.entries)
+  map.values(repo.entries)
