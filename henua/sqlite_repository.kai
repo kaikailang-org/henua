@@ -92,6 +92,35 @@
 # `#[unstable]` gate only once the demo proves the cell-wrapped
 # `kohau.sqlite.client` is what should sit underneath henua,
 # not the low-level surface.
+#
+# ## Security: table-name handling
+#
+# Bind variables protect every *value* the adapter writes — ids
+# and serialised entity payloads go through `sqlite.bind_text`,
+# never through string concatenation. But SQLite's prepared-
+# statement protocol does not parameterise *identifiers* (table
+# and column names), so the table name is necessarily
+# concatenated into the DDL and DML the adapter builds. To close
+# the resulting SQL-injection foot-gun, `make_sqlite` and
+# `make_sqlite_with_delim` validate the supplied table name
+# against a strict SQL-identifier regex and reject anything
+# else with `Err(Backend("invalid table name: ..."))`. The
+# allowed shape is:
+#
+#   - First character: ASCII letter (a-z, A-Z) or underscore.
+#   - Remaining characters: ASCII letters, digits, or underscores.
+#   - Length: 1..64 characters.
+#
+# Callers that need a richer name (Unicode, embedded spaces,
+# reserved words) must wrap the adapter themselves with their
+# own quoting strategy. The strict subset covers every realistic
+# aggregate-table name without the audit cost of supporting the
+# full SQL-quoting matrix. **Never feed an unvalidated string
+# from external input** (HTTP request, environment variable
+# from outside config, untrusted file) as the table name —
+# the validation rejects every injection vector the demo
+# considered, but defence in depth means caller-side sanitation
+# stays the first line.
 
 import henua.repository
 import kohau.sqlite
@@ -133,12 +162,59 @@ pub type SqliteRepository[a, i] = {
   codec: RepositoryCodec[a, i]
 }
 
+# Predicate enforced by `make_sqlite` and
+# `make_sqlite_with_delim` on the `table` argument. Accepts the
+# strict SQL-identifier subset documented in §*Security* of the
+# module header: first character is ASCII letter or underscore,
+# remaining characters are ASCII letter / digit / underscore,
+# length 1..64.
+#
+# Why iterate by character index rather than match-on-Char or
+# regex: the kaikai prelude's `string_slice` + `string_length`
+# pair is the lowest-dependency way to walk a string in v1, and
+# the validator runs once per `make_sqlite` call — no hot path.
+fn is_valid_table_name(s: String) : Bool = {
+  let n = string_length(s)
+  if n < 1 { false }
+  else if n > 64 { false }
+  else { is_id_head(string_slice(s, 0, 1)) and is_id_tail_from(s, 1, n) }
+}
+
+fn is_id_head(c: String) : Bool =
+  is_ascii_letter(c) or c == "_"
+
+fn is_id_tail_from(s: String, i: Int, n: Int) : Bool =
+  if i >= n { true }
+  else {
+    let c = string_slice(s, i, 1)
+    if is_ascii_letter(c) or is_ascii_digit(c) or c == "_" {
+      is_id_tail_from(s, i + 1, n)
+    } else { false }
+  }
+
+fn is_ascii_letter(c: String) : Bool =
+  (c >= "a" and c <= "z") or (c >= "A" and c <= "Z")
+
+fn is_ascii_digit(c: String) : Bool =
+  c >= "0" and c <= "9"
+
 # Construct an adapter. Creates the table if it does not exist
-# (`CREATE TABLE IF NOT EXISTS`). Returns
-# `Err(Backend(errmsg))` if the DDL fails — the caller has
-# typically just called `sqlite.open`, so the connection itself
-# is fine; the failure is almost always a permissions or
-# disk-full situation.
+# (`CREATE TABLE IF NOT EXISTS`).
+#
+# Validation:
+#   - `table` must match the strict SQL-identifier subset (see
+#     §*Security* in the module header). Invalid names return
+#     `Err(Backend("invalid table name: <table>"))` without
+#     touching the database. This closes the SQL-injection
+#     foot-gun that comes from concatenating identifiers into
+#     DDL/DML; SQLite's prepared-statement protocol cannot
+#     parameterise identifiers, so the validation is the
+#     defence.
+#
+# Returns `Err(Backend(errmsg))` if validation passes but the
+# DDL itself fails — the caller has typically just called
+# `sqlite.open`, so the connection is fine; the failure is
+# almost always a permissions or disk-full situation.
 #
 # The default delimiter is `|` (ASCII pipe). v1 keeps it
 # printable so fixtures can eyeball the stored `data` column
@@ -151,24 +227,30 @@ pub fn make_sqlite(
   table: String,
   codec: RepositoryCodec[a, i]
 ) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
-  let sql =
-    "CREATE TABLE IF NOT EXISTS " ++ table ++
-    " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
-  let rc = sqlite.exec(db, sql)
-  if rc == 0 {
-    Ok(SqliteRepository {
-      db: db,
-      table: table,
-      delim: "|",
-      codec: codec
-    })
+  if not is_valid_table_name(table) {
+    Err(Backend("invalid table name: " ++ table))
   } else {
-    Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+    let sql =
+      "CREATE TABLE IF NOT EXISTS " ++ table ++
+      " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+    let rc = sqlite.exec(db, sql)
+    if rc == 0 {
+      Ok(SqliteRepository {
+        db: db,
+        table: table,
+        delim: "|",
+        codec: codec
+      })
+    } else {
+      Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+    }
   }
 }
 
 # Variant of `make_sqlite` that lets the caller pick a custom
 # delimiter (useful when the codec emits unit-separator bytes).
+# Same `table` validation as `make_sqlite` — see §*Security* in
+# the module header for the accepted shape.
 #[unstable]
 pub fn make_sqlite_with_delim(
   db: Int,
@@ -176,19 +258,23 @@ pub fn make_sqlite_with_delim(
   delim: String,
   codec: RepositoryCodec[a, i]
 ) : Result[RepositoryError, SqliteRepository[a, i]] / Ffi = {
-  let sql =
-    "CREATE TABLE IF NOT EXISTS " ++ table ++
-    " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
-  let rc = sqlite.exec(db, sql)
-  if rc == 0 {
-    Ok(SqliteRepository {
-      db: db,
-      table: table,
-      delim: delim,
-      codec: codec
-    })
+  if not is_valid_table_name(table) {
+    Err(Backend("invalid table name: " ++ table))
   } else {
-    Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+    let sql =
+      "CREATE TABLE IF NOT EXISTS " ++ table ++
+      " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+    let rc = sqlite.exec(db, sql)
+    if rc == 0 {
+      Ok(SqliteRepository {
+        db: db,
+        table: table,
+        delim: delim,
+        codec: codec
+      })
+    } else {
+      Err(Backend("CREATE TABLE failed: " ++ sqlite.errmsg(db)))
+    }
   }
 }
 

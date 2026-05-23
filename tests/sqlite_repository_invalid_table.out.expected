@@ -1,0 +1,11 @@
+plain: Ok
+snake: Ok
+camel: Ok
+underscore_lead: Ok
+empty: Backend(invalid table name: )
+space: Backend(invalid table name: my table)
+semicolon: Backend(invalid table name: todos; DROP TABLE x)
+comment: Backend(invalid table name: todos--)
+quote: Backend(invalid table name: todos')
+leading_digit: Backend(invalid table name: 1todos)
+punctuation: Backend(invalid table name: todos.x)
