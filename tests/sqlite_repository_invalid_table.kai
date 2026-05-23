@@ -1,0 +1,66 @@
+# tests/sqlite_repository_invalid_table.kai — make_sqlite rejects
+# table names that fall outside the strict SQL-identifier subset
+# (see sqlite_repository §*Security*).
+#
+# Coverage: the four canonical injection / footgun shapes plus
+# the boundary cases the validator must accept. Each rejection
+# emits `Err(Backend("invalid table name: <input>"))`; the
+# acceptance case round-trips through DDL.
+
+import henua.repository
+import henua.sqlite_repository
+import kohau.sqlite
+
+type Dummy = { x: Int }
+
+fn to_row(d: Dummy) : [String] = [int_to_string(d.x)]
+fn from_row(r: [String]) : Option[Dummy] = match r {
+  [s] -> match string_to_int(s) {
+           Some(n) -> Some(Dummy { x: n })
+           None    -> None
+         }
+  _ -> None
+}
+fn id_to_str(i: Int) : String = int_to_string(i)
+fn id_from_str(s: String) : Option[Int] = string_to_int(s)
+
+fn try_make(db: Int, label: String, name: String) : Unit / Stdout + Ffi = {
+  let codec = RepositoryCodec {
+    to_row: to_row,
+    from_row: from_row,
+    id_to_string: id_to_str,
+    id_from_string: id_from_str
+  }
+  let r : Result[RepositoryError, SqliteRepository[Dummy, Int]] =
+    sqlite_repository.make_sqlite(db, name, codec)
+  match r {
+    Ok(_)  -> Stdout.print(label ++ ": Ok")
+    Err(e) -> Stdout.print(label ++ ": " ++ repository.repository_error_to_string(e))
+  }
+}
+
+fn main() : Int / Stdout + Ffi = {
+  let db = sqlite.open(":memory:")
+  if db == 0 {
+    Stdout.print("open FAIL")
+    1
+  } else {
+    # Acceptance cases — must round-trip.
+    try_make(db, "plain", "todos")
+    try_make(db, "snake", "user_sessions_v2")
+    try_make(db, "camel", "OrderItems")
+    try_make(db, "underscore_lead", "_internal")
+
+    # Rejection cases — every injection / footgun shape.
+    try_make(db, "empty",       "")
+    try_make(db, "space",       "my table")
+    try_make(db, "semicolon",   "todos; DROP TABLE x")
+    try_make(db, "comment",     "todos--")
+    try_make(db, "quote",       "todos'")
+    try_make(db, "leading_digit", "1todos")
+    try_make(db, "punctuation", "todos.x")
+
+    let _ = sqlite.close(db)
+    0
+  }
+}

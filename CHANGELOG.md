@@ -8,6 +8,30 @@ the surface is pre-1.0 (every release may break shape).
 
 ## [Unreleased]
 
+### Security
+
+- `sqlite_repository.make_sqlite` and `make_sqlite_with_delim`
+  now validate the `table` argument against a strict
+  SQL-identifier subset (first char ASCII letter or underscore,
+  remaining ASCII letters / digits / underscores, length 1..64)
+  and reject anything else with
+  `Err(Backend("invalid table name: <input>"))`. SQLite's
+  prepared-statement protocol does not parameterise
+  identifiers, so the table name is necessarily concatenated
+  into the DDL/DML the adapter builds. Validation closes the
+  resulting SQL-injection foot-gun for callers that take the
+  table name from configuration or untrusted input. Module
+  header gains a §*Security* section documenting the accepted
+  shape and the caller-side discipline (never feed unvalidated
+  external input as the table name). Behaviour-preserving for
+  every legitimate identifier; invalid names that previously
+  reached SQLite now fail fast before the connection is touched.
+  New fixture `tests/sqlite_repository_invalid_table.kai`
+  locks down four acceptance cases and seven rejection cases
+  (empty, embedded space, semicolon-injection, SQL comment,
+  embedded quote, leading digit, punctuation). tier1 FFI grows
+  from 2 to 3 fixtures, all green under kaikai 0.82.0 hanga-roa.
+
 ### Added
 
 - `henua/sqlite_repository.kai` — SQLite-backed Repository
