@@ -8,6 +8,24 @@ the surface is pre-1.0 (every release may break shape).
 
 ## [Unreleased]
 
+### Changed
+
+- **kohau dependency migrated from path-dep to git-dep.**
+  `kai.toml` switches `kohau = { path = "../kohau" }` to
+  `kohau = { source = "github.com/kaikailang-org/kohau",
+  ref = "v0.1.0" }`. henua no longer assumes a sibling
+  checkout — `kai install` fetches the pinned kohau release
+  into the user-level cache and the lockfile (`kai.lock`,
+  new this release) records the resolved SHA. The Makefile
+  parses `kai.lock` to find the cached path of the
+  `c/sqlite_shim.{c,h}` shim (which travels with the kohau
+  repo) instead of looking under `../kohau/c/`. Build
+  requirements: `kai` 0.83.0+ for git-dep resolution and a
+  successful `kai install` before `make tier1-ffi` (the
+  Makefile auto-runs install if `kai.lock` is absent or
+  older than `kai.toml`). tier1 stays 3 ffi + 9 pure
+  fixtures green.
+
 ### Security
 
 - `sqlite_repository.make_sqlite` and `make_sqlite_with_delim`
