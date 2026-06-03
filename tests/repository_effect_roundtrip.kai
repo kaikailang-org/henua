@@ -1,0 +1,69 @@
+# tests/repository_effect_roundtrip.kai — Repository-as-effect (the port).
+#
+# Coverage:
+#   - with_in_memory installs a Repository[a, i] handler
+#   - the domain function names only the port (/ Repository[User, Int])
+#   - save then find returns the saved entity
+#   - save twice on the same key replaces
+#   - delete returns True for a present key, removing it
+#   - delete returns False for an absent key (tolerant)
+#   - with_in_memory_seeded starts from a pre-populated store
+#
+# This is the effect-form sibling of repository_roundtrip.kai (the
+# value form). Same scenario, but the state is threaded by the
+# handler, not by the caller — the domain never names a concrete
+# repository.
+
+import collections.map
+import henua.repository_effect
+
+type User = { name: String, age: Int }
+
+fn yes_no(b: Bool) : String = if b { "True" } else { "False" }
+
+# Domain function: depends only on the Repository port. There is no
+# way to name an InMemoryRepository (or a SQLite one) in here.
+fn scenario() : Unit / Repository[User, Int] + Stdout = {
+  let alice = User { name: "alice", age: 30 }
+  let bob   = User { name: "bob",   age: 25 }
+
+  Repository.save(1, alice)
+  Repository.save(2, bob)
+
+  match Repository.find(1) {
+    Some(u) -> Stdout.print("find 1: " ++ u.name ++ " age=" ++ int_to_string(u.age))
+    None    -> Stdout.print("find 1: None")
+  }
+
+  # Replace alice (same key).
+  Repository.save(1, User { name: "alice", age: 31 })
+  match Repository.find(1) {
+    Some(u) -> Stdout.print("find 1 after replace: " ++ u.name ++ " age=" ++ int_to_string(u.age))
+    None    -> Stdout.print("find 1 after replace: None")
+  }
+
+  # Delete bob (present) then again (absent).
+  Stdout.print("delete 2 (present): " ++ yes_no(Repository.delete(2)))
+  Stdout.print("delete 2 (absent):  " ++ yes_no(Repository.delete(2)))
+
+  match Repository.find(2) {
+    Some(_) -> Stdout.print("find 2 after delete: present (BUG)")
+    None    -> Stdout.print("find 2 after delete: None")
+  }
+}
+
+# A second scenario over a seeded store, exercising with_in_memory_seeded.
+fn seeded_scenario() : Unit / Repository[User, Int] + Stdout = {
+  match Repository.find(7) {
+    Some(u) -> Stdout.print("seeded find 7: " ++ u.name)
+    None    -> Stdout.print("seeded find 7: None")
+  }
+}
+
+fn main() : Int / Stdout = {
+  repository_effect.with_in_memory(scenario)
+
+  let seed = map.put(map.empty(), 7, User { name: "carol", age: 40 })
+  repository_effect.with_in_memory_seeded(seed, seeded_scenario)
+  0
+}

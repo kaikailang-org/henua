@@ -1,0 +1,7 @@
+== adapter A: in-memory ==
+account acc-1: alice credited 100 -> balance 100
+== adapter B: tracing 'driver' ==
+  [sql] UPSERT accounts id='acc-1' balance=0
+  [sql] SELECT * FROM accounts WHERE id = 'acc-1'
+  [sql] UPSERT accounts id='acc-1' balance=100
+account acc-1: alice credited 100 -> balance 100

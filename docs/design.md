@@ -7,7 +7,10 @@ top of kaikai and underneath manutara and hopu.
 > Event, EventBus, Validation, and Bounded Context conventions
 > are in place. The shipped reference implementations are pure
 > and in-memory; database-backed adapters live in follow-up
-> work once `kohau` is available.
+> work once `kohau` is available. The Repository ships in two
+> complementary forms — the value form (`henua.repository`) and
+> the port/effect form (`henua.repository_effect`); see
+> Decision 9.
 
 ## Context
 
@@ -138,13 +141,18 @@ the gap is documented in §*External dependencies on kaikai*.
 
 ## The surface
 
-henua exposes six modules under `henua/`:
+henua exposes seven modules under `henua/`:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ henua.repository                                             │
 │   Repository convention + InMemoryRepository[a, i] adapter   │
-│   save / find / delete / size / all                          │
+│   (value form) save / find / delete / size / all             │
+├──────────────────────────────────────────────────────────────┤
+│ henua.repository_effect                                     │
+│   Repository[a, i] effect (the port) + in-memory adapter     │
+│   (effect form) Repository.find / .save / .delete            │
+│   with_in_memory / with_in_memory_seeded                     │
 ├──────────────────────────────────────────────────────────────┤
 │ henua.event_bus                                              │
 │   EventBus convention + InMemoryEventBus[ev, e] adapter      │
@@ -197,6 +205,30 @@ load-bearing: a domain operation that needs an entity may
 prefer to convert absence to a domain error
 (`AccountNotKnown`), and that decision belongs in the caller,
 not in the Repository.
+
+### henua.repository_effect
+
+The same Repository pattern as a **port** — the parametric effect
+`Repository[a, i]` — rather than a value. A domain function
+declares `/ Repository[a, i]` in its row and calls
+`Repository.find / .save / .delete`; it cannot name a concrete
+repository type. The adapter is the enclosing handler, installed
+at the composition root:
+
+- **`Repository[a, i]`** is the effect (the port): `find(key) :
+  Option[a]`, `save(key, entity) : Unit`, `delete(key) : Bool`.
+- **`with_in_memory(body)`** installs an in-memory adapter — a
+  handler-local `Map[i, a]` cell threaded through the same
+  `map.*` logic the value form uses (reused, not reimplemented).
+- **`with_in_memory_seeded(seed, body)`** is the same adapter
+  started from a pre-populated `Map[i, a]` (for fixtures/tests).
+
+This is the hexagonal form: the domain depends on the port, never
+the adapter, and the effect-row checker enforces it. It is the
+surface manutara targets so a route's row inherits persistence
+access. The full rationale and its relationship to the value form
+are Decision 9; the fixture is
+`tests/repository_effect_roundtrip.kai`.
 
 Future adapters (`postgres_repository.kai`,
 `sqlite_repository.kai`) will provide the same shape with
@@ -283,7 +315,7 @@ registry.
 
 ## Decisions
 
-The eight load-bearing decisions for henua v0.1.
+The nine load-bearing decisions for henua v0.1.
 
 ### Decision 1 — Repository as convention, not as protocol
 
@@ -307,6 +339,14 @@ Rationale:
   `(a, i)` — the aggregate and id type — not the repository
   implementation. The protocol would be exercised at the wrong
   axis.
+
+This decision rejects the *protocol* form and keeps the *value*
+form (a concrete repo threaded explicitly). It does **not** reject
+the *effect* form — modelling the Repository as a parametric
+effect `Repository[a, i]` whose handlers are the adapters. That
+form was added later as a complementary surface; see Decision 9.
+The effect is, in fact, the surface that captures the effectful
+case Decision 1's first bullet says "a protocol cannot capture".
 
 ### Decision 2 — InMemory adapter is pure (returns a new repo)
 
@@ -441,6 +481,73 @@ Rationale:
   documentation convention, not a framework feature. v1 ships
   the doc; v0.2 may ship a typed router if usage data shows
   the absence is load-bearing.
+
+### Decision 9 — Repository also as a port (effect), complementing the value form
+
+`henua.repository_effect` exposes the Repository as a parametric
+**effect** `Repository[a, i]`, alongside the value-form
+`InMemoryRepository[a, i]` of `henua.repository`. The two are
+layers, not competitors.
+
+Background. Decision 1 chose convention-over-protocol and the
+value form: a concrete repo threaded explicitly through `save /
+find / delete`. That form is pure, immutable, and matches kaikai's
+core — the right substrate for unit tests, fixtures, and
+prototyping. But it has a property the broader ecosystem's "ports
+and adapters" story (see `kaikai-docs/whitepaper-hexagonal.md`)
+calls out as the *weaker* form: the domain's signature **names the
+concrete repository type**, so the domain depends on the adapter,
+not only on the port. That is closer to a service locator passed by
+hand than to a late-bound port. henua v0.1 shipped only this form
+— leaving the hexagonal property the ecosystem advertises (the
+domain names *no* adapter, the compiler enforces the dependency
+rule) on the table.
+
+The effect form closes that gap. A domain function declares
+`/ Repository[a, i]` in its row and calls `Repository.find /
+Repository.save / Repository.delete`. It is **structurally
+incapable** of naming a concrete repository — the language gives
+it no handle to one. Which adapter is plugged in is decided by the
+enclosing handler at the composition root
+(`repository_effect.with_in_memory` today; kohau-backed
+`with_sqlite` / `with_postgres` later). The effect-row checker
+enforces the dependency rule that mainstream languages leave to
+discipline + a DI container.
+
+Why an *effect* succeeds where Decision 1 said a protocol fails:
+a protocol is single-dispatch on `Self` and pure; an effect IS an
+effect row and is parametric over `(a, i)` — exactly the axis of
+variation Decision 1 identified. `effect Repository[a, i]` with ops
+returning the generic `Option[a]` / `Bool` is verified to compile
+and run against kai 0.84.0 (fixture
+`tests/repository_effect_roundtrip.kai`).
+
+The in-memory adapter is **built on the value form's logic, not a
+reimplementation**: `with_in_memory`'s handler threads a
+handler-local `Map[i, a]` cell through the same `map.put` /
+`map.get` / `map.remove` operations the value form uses. The only
+difference is who threads the state — the value form hands a fresh
+repo to the caller; the handler threads it internally.
+
+Guidance.
+
+- **Value form** (`henua.repository`): a pure unit that threads
+  state explicitly; the cheapest way to test pure logic with no
+  handler ceremony; the substrate the in-memory adapter reuses.
+- **Effect form** (`henua.repository_effect`): a domain operation
+  whose repository dependency should be a compiler-checked port,
+  swappable at the boundary without touching the domain; the
+  surface downstream frameworks (manutara) target so a route's
+  effect row inherits `Repository[a, i]` and the capability audit
+  sees persistence access for free.
+
+This is the same two-shape discipline ahu and kohau already pin
+("pure form for tests / wrapped form for production"); henua now
+matches it for the Repository. The fallible-adapter error story
+(infrastructure failures from a real database) rides a `Fail`-shaped
+effect on the adapter's own row rather than `find`'s result — pinned
+when the first kohau-backed adapter (`with_sqlite`) lands; v0.2
+scope.
 
 ## Roadmap v0.2
 
