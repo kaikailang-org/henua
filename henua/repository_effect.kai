@@ -1,0 +1,158 @@
+# henua/repository_effect.kai — Repository as an effect (the port).
+#
+# Imported by user code as `import henua.repository_effect`; the
+# effect ops are called dotted on the effect name
+# (`Repository.find(key)`, `Repository.save(key, entity)`); the
+# adapter installers are `repository_effect.with_in_memory(body)`.
+#
+# ## Why this module exists alongside `repository.kai`
+#
+# `henua/repository.kai` models a Repository as a **value**: a
+# concrete `InMemoryRepository[a, i]` threaded explicitly through
+# `save` / `find` / `delete`, each returning a fresh repository.
+# That form is pure, immutable, and matches kaikai's functional
+# core — it is the right shape for unit tests, fixtures, and
+# prototyping, and it is the substrate this module builds on.
+#
+# This module models a Repository as a **port**: the `Repository[a, i]`
+# *effect*. A domain function declares `/ Repository[a, i]` in its
+# row and calls `Repository.find` / `Repository.save` / `Repository.delete`.
+# It cannot name a concrete repository type — the language gives it
+# no handle to one. Which adapter is plugged in is decided by the
+# enclosing handler (`with_in_memory`, or a future kohau-backed
+# `with_sqlite` / `with_postgres`), installed at the composition
+# root. This is hexagonal architecture's *port / adapter / dependency
+# rule*, enforced by the effect-row checker rather than by convention:
+# a domain function whose row is `/ Repository[a, i]` is structurally
+# incapable of reaching a database connection directly.
+#
+# The two forms are **layers, not competitors**:
+#
+#   - The *value* form (`repository.kai`) is the low-level substrate.
+#     The in-memory adapter here is built ON it — it reuses the same
+#     `Map`-backed `save` / `find` / `delete` logic, just threaded
+#     through a handler-local cell instead of by the caller.
+#   - The *effect* form (this module) is the ergonomic, late-bound
+#     surface the domain and downstream frameworks (manutara) target.
+#     A route's effect row inherits `Repository[a, i]`; the capability
+#     audit (`kai effects --json`) sees persistence access for free.
+#
+# Choose the value form for a pure unit that threads state explicitly;
+# choose the effect form for a domain operation whose dependency on a
+# repository should be a compiler-checked port, swappable at the
+# boundary without touching the domain.
+#
+# ## Why an effect and not a protocol
+#
+# Same reason `repository.kai` is convention-based (see its header):
+# kaikai protocols are single-dispatch on `Self` and disallow effect
+# rows on ops, so a `protocol Repository` cannot express a polymorphic
+# repository whose real adapters (Postgres, SQLite via kohau) carry
+# effect rows. An *effect* has the opposite property — it IS an effect
+# row, and it is parametric over the aggregate `a` and the id `i`
+# (`effect Repository[a, i]`, verified parametric over two type
+# params against kai 0.84.0). The effect is the natural port.
+#
+# ## Adapter status
+#
+#   `with_in_memory`         — this file. Pure Map-backed, handler-local.
+#   `with_sqlite`  (future)  — kohau-backed, carries `/ Db` internally.
+#   `with_postgres`(future)  — kohau-backed, native wire protocol.
+#
+# Spec: `docs/design.md` §*Repository* and §*Repository as a port*.
+
+import collections.map
+import henua.repository
+
+# ---- The port -------------------------------------------------------
+#
+# The Repository effect, parametric over the aggregate type `a` and
+# the id type `i`. A domain function names this effect in its row and
+# nothing else — never a concrete repository type.
+#
+# Ops mirror the value-form contract (`repository.kai`) with the
+# threading removed:
+#
+#   - `find(key)`   : the entity if present, `None` if absent. The
+#                     value form's `Ok(None)` vs `Err(Backend(...))`
+#                     split collapses here into `Option[a]` for the
+#                     in-memory adapter (which never fails on lookup);
+#                     fallible adapters surface infrastructure errors
+#                     through a `Fail`-shaped effect added to the
+#                     handler's own row, not through `find`'s result.
+#   - `save(key, e)`: insert-or-replace. No return value — the effect
+#                     IS the write.
+#   - `delete(key)` : returns whether the key was present (mirrors the
+#                     value form's `Err(NotFound)` for delete-of-ghost,
+#                     surfaced here as `False` rather than an error so
+#                     the common "tolerant delete" path needs no match).
+#
+# The id type `i` must be usable as a `Map` key for the in-memory
+# adapter (`Int`, `Real`, `Char`, `String` today — see
+# `repository.kai`'s note on key types). Other adapters may relax this.
+pub effect Repository[a, i] {
+  find(key: i) : Option[a]
+  save(key: i, entity: a) : Unit
+  delete(key: i) : Bool
+}
+
+# ---- The in-memory adapter -----------------------------------------
+#
+# `with_in_memory(body)` installs a `Repository[a, i]` handler backed
+# by an in-memory store, runs `body`, and returns its result. The
+# store is a handler-local `Map[i, a]` cell that survives across ops
+# for the duration of the body — `save` mutates it, `find` reads it,
+# `delete` removes from it.
+#
+# This is the *adapter* in hexagonal terms: the one place a concrete
+# storage technology (here, the stdlib AVL `Map`) appears. The store's
+# transition logic is the same `map.put` / `map.get` / `map.remove`
+# that `repository.kai`'s value form uses — the substrate is reused,
+# not reimplemented. The only difference is who threads the state:
+# the value form hands a fresh repo back to the caller; the handler
+# threads it internally through the `store` cell.
+#
+# The row variable `e` carries whatever OTHER effects `body` performs
+# (logging, clock, the domain's own effects); `with_in_memory`
+# discharges only `Repository[a, i]` and passes `e` through unchanged.
+pub fn with_in_memory[a, i, r, e](
+  body: () -> r / Repository[a, i] + e
+) : r / e =
+  run_with_store(map.empty(), body)
+
+# `with_in_memory_seeded(entries, body)` is the same adapter started
+# from a non-empty store — useful for tests and fixtures that want a
+# pre-populated repository without a sequence of `save` calls. The
+# seed is the same `Map[i, a]` carrier the value form exposes, so a
+# caller can build it with `repository.make_in_memory()` +
+# `repository.save` and hand the resulting `entries` field in, or
+# build a `Map` directly.
+pub fn with_in_memory_seeded[a, i, r, e](
+  seed: Map[i, a],
+  body: () -> r / Repository[a, i] + e
+) : r / e =
+  run_with_store(seed, body)
+
+# Internal: the shared handler installation. Holds the store in a
+# handler-local cell and routes each op through the reused Map logic.
+# Factored out so `with_in_memory` and `with_in_memory_seeded` share
+# one handler body and differ only in the initial store.
+fn run_with_store[a, i, r, e](
+  initial: Map[i, a],
+  body: () -> r / Repository[a, i] + e
+) : r / e = {
+  var store : Map[i, a] = initial
+  handle { body() } with Repository[a, i] {
+    find(key, resume)         -> resume(map.get(@store, key))
+    save(key, entity, resume) -> {
+      store := map.put(@store, key, entity)
+      resume(())
+    }
+    delete(key, resume)       -> {
+      let present = map.contains(@store, key)
+      store := map.remove(@store, key)
+      resume(present)
+    }
+    return(x)                 -> x
+  }
+}

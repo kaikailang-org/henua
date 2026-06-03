@@ -1,0 +1,89 @@
+# examples/repository_port/main.kai
+#
+# Repository as a PORT (effect), driven by two different ADAPTERS,
+# with the domain function unchanged between them.
+#
+# This is hexagonal architecture made literal by kaikai's effect
+# system (see kaikai-docs/whitepaper-hexagonal.md):
+#
+#   - the PORT is the effect `Repository[Account, String]`
+#   - the DOMAIN (`open_and_credit`) names only that port — it is
+#     structurally incapable of naming a concrete repository
+#   - each ADAPTER is a handler installed at the boundary:
+#       * with_in_memory     — henua's pure Map-backed adapter
+#       * with_tracing        — a stand-in "real driver" that logs
+#                               every operation as a SQL-ish line
+#
+# Run it and notice: `open_and_credit` is called twice, identically,
+# and produces the same domain result under both adapters. Only the
+# adapter decides what actually happens to the data.
+#
+# Build & run:
+#   kai build examples/repository_port/main.kai -o build/repository_port
+#   ./build/repository_port
+
+import collections.map
+import henua.repository_effect
+
+type Account = { holder: String, balance: Int }
+
+# ---- DOMAIN -------------------------------------------------------
+# Depends only on the Repository port. No adapter named anywhere.
+# Its row is `/ Repository[Account, String]` and nothing else — it
+# cannot reach a database connection, a file, or stdout directly.
+fn open_and_credit(key: String, name: String, amount: Int) : String / Repository[Account, String] = {
+  Repository.save(key, Account { holder: name, balance: 0 })
+  match Repository.find(key) {
+    Some(acc) -> {
+      let credited = Account { holder: acc.holder, balance: acc.balance + amount }
+      Repository.save(key, credited)
+      "account #{key}: #{credited.holder} credited #{amount} -> balance #{credited.balance}"
+    }
+    None -> "account #{key}: vanished after save (BUG)"
+  }
+}
+
+# ---- ADAPTER B: a tracing stand-in for a "real" driver ------------
+# Same Repository port, but this handler logs each operation the way
+# a SQL driver might, and keeps its own in-handler store. It carries
+# `Stdout` in its row (the trace output); the in-memory adapter does
+# not. The domain is identical under both.
+fn with_tracing[r, e](
+  body: () -> r / Repository[Account, String] + e
+) : r / Stdout + e = {
+  var store : Map[String, Account] = map.empty()
+  handle { body() } with Repository[Account, String] {
+    find(key, resume) -> {
+      Stdout.print("  [sql] SELECT * FROM accounts WHERE id = '#{key}'")
+      resume(map.get(@store, key))
+    }
+    save(key, entity, resume) -> {
+      Stdout.print("  [sql] UPSERT accounts id='#{key}' balance=#{entity.balance}")
+      store := map.put(@store, key, entity)
+      resume(())
+    }
+    delete(key, resume) -> {
+      let present = map.contains(@store, key)
+      Stdout.print("  [sql] DELETE FROM accounts WHERE id = '#{key}'")
+      store := map.remove(@store, key)
+      resume(present)
+    }
+    return(x) -> x
+  }
+}
+
+fn main() : Int / Stdout = {
+  # Adapter A — henua's pure in-memory adapter. The domain runs with
+  # no trace; only the result comes back.
+  Stdout.print("== adapter A: in-memory ==")
+  let r1 = repository_effect.with_in_memory(() => open_and_credit("acc-1", "alice", 100))
+  Stdout.print(r1)
+
+  # Adapter B — the tracing stand-in. SAME domain call, SAME result,
+  # different adapter: every operation is now logged.
+  Stdout.print("== adapter B: tracing 'driver' ==")
+  let r2 = with_tracing(() => open_and_credit("acc-1", "alice", 100))
+  Stdout.print(r2)
+
+  0
+}
