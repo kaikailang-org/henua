@@ -42,21 +42,18 @@ KAI_BIN ?= kai
 SQLITE_INC := /opt/homebrew/opt/sqlite/include
 SQLITE_LIB := /opt/homebrew/opt/sqlite/lib
 
-# kai cache root. macOS: ~/Library/Caches/kai; Linux:
-# $XDG_CACHE_HOME/kai or ~/.cache/kai. We pick the macOS path
-# when present and fall back to the XDG location.
+# Locate the kohau C shim. kohau is a git-dep (see kai.toml), so
+# the shim travels with the cached package: `kai install` fetches
+# kohau into the user-level cache and pins the resolved SHA in
+# kai.lock; we read that SHA back and derive the shim path under the
+# cache root.
 KAI_CACHE_ROOT ?= $(shell \
-  if [ -d "$$HOME/Library/Caches/kai" ]; then \
-    echo "$$HOME/Library/Caches/kai"; \
-  elif [ -n "$$XDG_CACHE_HOME" ]; then \
-    echo "$$XDG_CACHE_HOME/kai"; \
-  else \
-    echo "$$HOME/.cache/kai"; \
-  fi)
+  if [ -d "$$HOME/Library/Caches/kai" ]; then echo "$$HOME/Library/Caches/kai"; \
+  elif [ -n "$$XDG_CACHE_HOME" ]; then echo "$$XDG_CACHE_HOME/kai"; \
+  else echo "$$HOME/.cache/kai"; fi)
 
-# Extract the kohau SHA from kai.lock (written by `kai install`).
-# The lockfile format pins each git dep to a sha; we grep for the
-# kohau block and pull the sha line out of it.
+# Pull the kohau SHA out of the kohau block in kai.lock. The lock
+# line is `sha = "<40 hex>"`; strip quotes and whitespace.
 KOHAU_SHA = $(shell awk '/name = "kohau"/{f=1} f && /sha =/{gsub(/[" ]/,"",$$3); print $$3; exit}' kai.lock 2>/dev/null)
 
 KOHAU_DIR := $(KAI_CACHE_ROOT)/pkg/github.com/kaikailang-org/kohau/$(KOHAU_SHA)

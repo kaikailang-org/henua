@@ -2,14 +2,20 @@
 # table names that fall outside the strict SQL-identifier subset
 # (see sqlite_repository §*Security*).
 #
-# Coverage: the four canonical injection / footgun shapes plus
-# the boundary cases the validator must accept. Each rejection
-# emits `Err(Backend("invalid table name: <input>"))`; the
-# acceptance case round-trips through DDL.
+# Coverage: the four canonical injection / footgun shapes plus the
+# boundary cases the validator must accept. Each rejection emits
+# `Err(Backend("invalid table name: <input>"))`; the acceptance
+# cases round-trip through DDL.
+#
+# Runs through the cell-wrapped client — the body is in
+# `Actor[SqlMsg]`, no `Ffi`. The table-name validation is
+# caller-side (no SQLite round-trip needed for the rejections), but
+# the acceptance cases issue real DDL through the cell.
 
+import actor
 import henua.repository
 import henua.sqlite_repository
-import kohau.sqlite
+import kohau.sqlite.client
 
 type Dummy = { x: Int }
 
@@ -24,7 +30,7 @@ fn from_row(r: [String]) : Option[Dummy] = match r {
 fn id_to_str(i: Int) : String = int_to_string(i)
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
-fn try_make(db: Int, label: String, name: String) : Unit / Stdout + Ffi = {
+fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] = {
   let codec = RepositoryCodec {
     to_row: to_row,
     from_row: from_row,
@@ -32,35 +38,33 @@ fn try_make(db: Int, label: String, name: String) : Unit / Stdout + Ffi = {
     id_from_string: id_from_str
   }
   let r : Result[RepositoryError, SqliteRepository[Dummy, Int]] =
-    sqlite_repository.make_sqlite(db, name, codec)
+    sqlite_repository.make_sqlite(c, name, codec)
   match r {
     Ok(_)  -> Stdout.print(label ++ ": Ok")
     Err(e) -> Stdout.print(label ++ ": " ++ repository.repository_error_to_string(e))
   }
 }
 
-fn main() : Int / Stdout + Ffi = {
-  let db = sqlite.open(":memory:")
-  if db == 0 {
-    Stdout.print("open FAIL")
-    1
-  } else {
-    # Acceptance cases — must round-trip.
-    try_make(db, "plain", "todos")
-    try_make(db, "snake", "user_sessions_v2")
-    try_make(db, "camel", "OrderItems")
-    try_make(db, "underscore_lead", "_internal")
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] = {
+  # Acceptance cases — must round-trip.
+  try_make(c, "plain", "todos")
+  try_make(c, "snake", "user_sessions_v2")
+  try_make(c, "camel", "OrderItems")
+  try_make(c, "underscore_lead", "_internal")
 
-    # Rejection cases — every injection / footgun shape.
-    try_make(db, "empty",       "")
-    try_make(db, "space",       "my table")
-    try_make(db, "semicolon",   "todos; DROP TABLE x")
-    try_make(db, "comment",     "todos--")
-    try_make(db, "quote",       "todos'")
-    try_make(db, "leading_digit", "1todos")
-    try_make(db, "punctuation", "todos.x")
+  # Rejection cases — every injection / footgun shape.
+  try_make(c, "empty",       "")
+  try_make(c, "space",       "my table")
+  try_make(c, "semicolon",   "todos; DROP TABLE x")
+  try_make(c, "comment",     "todos--")
+  try_make(c, "quote",       "todos'")
+  try_make(c, "leading_digit", "1todos")
+  try_make(c, "punctuation", "todos.x")
 
-    let _ = sqlite.close(db)
-    0
-  }
+  client.close(c)
+}
+
+fn main() : Int / Spawn + Ffi + Console = {
+  with_mailbox { client.with_client(":memory:", body) }
+  0
 }

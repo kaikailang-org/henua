@@ -10,6 +10,51 @@ the surface is pre-1.0 (every release may break shape).
 
 ### Changed
 
+- **`sqlite_repository` migrated from the borrowed `db: Int`
+  handle to kohau's cell-wrapped client.** This closes the debt
+  the previous CHANGELOG flagged: *"connection lifecycle moves
+  into kohau.sqlite.client once that lands."* It has landed.
+
+  - `SqliteRepository[a, i]` now carries `client: Pid[SqlMsg]`
+    instead of `db: Int`. The import changes from `kohau.sqlite`
+    (raw FFI) to `kohau.sqlite.client` (the cell).
+  - Every operation's row changes from `/ Ffi` to
+    `/ Actor[SqlMsg]`. The adapter no longer touches libsqlite3
+    directly — prepare / bind / step / finalize are gone, replaced
+    by `client.exec` / `query_row` / `query_scalar`. The cell-fiber
+    is the sole owner of the FFI boundary; henua never sees a raw
+    handle, a libsqlite3 status code, or an `Ffi` effect again.
+  - `make_sqlite(c, table, codec)` / `make_sqlite_with_delim`
+    take the client pid instead of a `db` handle. The strict
+    table-name validation (the §*Security* hardening) is preserved
+    verbatim. The adapter does NOT own the client lifecycle — the
+    caller's `kohau.sqlite.client.with_client(path, body)` scope
+    does, and the `SqliteRepository` is constructed inside `body`.
+  - The borrowed-`db` form is **removed**, not kept alongside —
+    henua is pre-1.0, every `pub` is `#[unstable]`, and the
+    project follows "few forms, each with clear intent". A second
+    adapter doing the same thing through a raw handle would be a
+    liability, not a migration aid.
+  - **Behaviour-preserving.** The three FFI fixtures
+    (`sqlite_repository_roundtrip`, `_not_found`, `_invalid_table`)
+    were rewritten to drive the adapter through `with_client` —
+    their golden output is byte-identical to the borrowed-`db`
+    version. Same semantics, FFI sealed inside the cell. tier1
+    stays 3 ffi + 10 pure fixtures green under kaikai 0.86.1.
+
+- **`kai.toml`: kohau bumped to v0.2.0; ahu added as a git-dep.**
+  kohau is pinned to `ref = "v0.2.0"` — the release that ships
+  `kohau.sqlite.client`. `ahu` is added as a direct git-dep
+  (`ref = "v0.1.0"`): henua's adapter delegates to an `ahu.cell`
+  and the fixtures call `ahu.cell.ask` transitively, and
+  dependency resolution does not thread a dependency's own deps to
+  the consumer's module path, so ahu must be declared directly.
+  `kai install` fetches both into the user-level cache and records
+  the resolved SHAs in `kai.lock`. The Makefile reads the kohau SHA
+  back from the lockfile to locate the C shim under the cache root.
+  tier1 is green with both deps resolved from the remote — no
+  sibling checkout required.
+
 - **kohau dependency migrated from path-dep to git-dep.**
   `kai.toml` switches `kohau = { path = "../kohau" }` to
   `kohau = { source = "github.com/kaikailang-org/kohau",

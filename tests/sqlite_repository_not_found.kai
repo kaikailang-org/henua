@@ -1,11 +1,14 @@
 # tests/sqlite_repository_not_found.kai — delete on absent id
 # returns `Err(NotFound)`. Mirrors the InMemory adapter's
 # `repository_delete_missing.kai` fixture against the SQLite
-# backend.
+# backend, through the cell-wrapped client.
+#
+# The body runs in `Actor[SqlMsg]` — no `Ffi`.
 
+import actor
 import henua.repository
 import henua.sqlite_repository
-import kohau.sqlite
+import kohau.sqlite.client
 
 # Trivial String aggregate — codec is identity.
 fn s_to_row(s: String) : [String] = [s]
@@ -17,18 +20,15 @@ fn s_from_row(r: [String]) : Option[String] =
 fn id_to_str(i: Int) : String = int_to_string(i)
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
-fn run(db: Int) : Int / Stdout + Ffi = {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] = {
   let codec = RepositoryCodec {
     to_row: s_to_row,
     from_row: s_from_row,
     id_to_string: id_to_str,
     id_from_string: id_from_str
   }
-  match sqlite_repository.make_sqlite(db, "items", codec) {
-    Err(e) -> {
-      Stdout.print("make err=" ++ repository.repository_error_to_string(e))
-      1
-    }
+  match sqlite_repository.make_sqlite(c, "items", codec) {
+    Err(e) -> Stdout.print("make err=" ++ repository.repository_error_to_string(e))
     Ok(r) -> {
       # delete on empty table — expect NotFound.
       match sqlite_repository.delete(r, 7) {
@@ -61,19 +61,12 @@ fn run(db: Int) : Int / Stdout + Ffi = {
         Ok(None)    -> Stdout.print("find 1 after failed delete: unexpected None")
         Err(e)      -> Stdout.print("find 1 after failed delete: " ++ repository.repository_error_to_string(e))
       }
-      0
     }
   }
+  client.close(c)
 }
 
-fn main() : Int / Stdout + Ffi = {
-  let db = sqlite.open(":memory:")
-  if db == 0 {
-    Stdout.print("open FAIL")
-    1
-  } else {
-    let rc = run(db)
-    let _ = sqlite.close(db)
-    rc
-  }
+fn main() : Int / Spawn + Ffi + Console = {
+  with_mailbox { client.with_client(":memory:", body) }
+  0
 }

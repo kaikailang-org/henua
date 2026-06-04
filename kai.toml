@@ -4,24 +4,33 @@ edition = "hanga-roa"
 
 [dependencies]
 
-# kohau (SQLite via C shim). henua/sqlite_repository.kai imports
-# kohau.sqlite directly. Resolved as a git dependency; `kai install`
-# fetches the tagged release into the user-level cache
-# (~/Library/Caches/kai/pkg/github.com/kaikailang-org/kohau/<sha>/
-# on macOS, $XDG_CACHE_HOME/kai/pkg/... on Linux). The shim
-# (c/sqlite_shim.{c,h}) travels with the cached repo; the Makefile
-# locates it via `kai show` / lockfile rather than assuming a
-# sibling checkout.
-kohau = { source = "github.com/kaikailang-org/kohau", ref = "v0.1.0" }
+# kohau (SQLite via C shim + cell-wrapped client).
+# henua/sqlite_repository.kai imports `kohau.sqlite.client` — the
+# cell-wrapped ergonomic surface, NOT the raw `kohau.sqlite` FFI.
+# Pinned to kohau v0.2.0, the release that ships the client.
+# `kai install` fetches it into the user-level cache and the
+# lockfile records the resolved SHA; the C shim (c/sqlite_shim.{c,h})
+# travels with the cached repo.
+kohau = { source = "github.com/kaikailang-org/kohau", ref = "v0.2.0" }
+
+# ahu (concurrency / fault-tolerance, layer 2). henua's
+# sqlite_repository delegates to kohau's cell-wrapped client, which
+# is an `ahu.cell`; the adapter's surface mentions `ahu`-derived
+# types (`Pid[SqlMsg]` is a cell mailbox) and the fixtures call
+# `ahu.cell.ask` transitively. Declared directly (not relied on
+# transitively through kohau) because dependency resolution does not
+# thread a dependency's own deps to the consumer's module path.
+ahu = { source = "github.com/kaikailang-org/ahu", ref = "v0.1.0" }
 
 # henua's tier1 SQLite-repository fixtures import #[unstable]
-# declarations from both kohau.sqlite (low-level surface, v0.1)
-# and henua.sqlite_repository (the adapter shipped in this
-# package). Opting in here acknowledges the disclosure for the
+# declarations from henua.sqlite_repository (the adapter shipped in
+# this package), kohau.sqlite.client (the cell-wrapped surface), and
+# ahu.cell (cell.ask, reached transitively — kohau's client is an
+# ahu cell). Opting in here acknowledges the disclosure for the
 # in-tree fixtures so the build is warning-free. Downstream
 # consumers do the same in their own kai.toml.
 [unstable]
 henua = true
-sqlite = true
-kohau = true
 sqlite_repository = true
+client = true
+cell = true
