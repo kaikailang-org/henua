@@ -94,4 +94,4 @@ kai build examples/catalog/main.kai -o build/catalog
 
 ## License
 
-TBD. Will match the kaikai ecosystem license (likely Apache-2.0 or MIT).
+[MIT](LICENSE).
