@@ -1,0 +1,7 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "scm"
+tag_format = "v$version"
+version_files = ["kai.toml:^version"]
+bump_message = "release: v$new_version"
+update_changelog_on_bump = false

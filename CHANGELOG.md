@@ -6,7 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-02
+
+### Added
+
+- `henua/repository_effect.kai` — Repository as a **port**: the
+  `Repository[a, i]` *effect*, complementing the value form in
+  `repository.kai`. A domain function declares `/ Repository[a, i]`
+  in its row and calls `Repository.find / save / delete`; which
+  adapter is plugged in is decided by the enclosing handler
+  (`with_in_memory` / `with_in_memory_seeded` ship today) at the
+  composition root. New fixture
+  `tests/repository_effect_roundtrip.kai` and example
+  `examples/repository_port/` (same domain under two adapters).
 
 ### Changed
 
@@ -73,6 +85,10 @@ the surface is pre-1.0 (every release may break shape).
   back from the lockfile to locate the C shim under the cache root.
   tier1 is green with both deps resolved from the remote — no
   sibling checkout required.
+
+## [0.1.0] - 2026-05-24
+
+### Changed
 
 - **kohau dependency migrated from path-dep to git-dep.**
   `kai.toml` switches `kohau = { path = "../kohau" }` to
