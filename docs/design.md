@@ -519,7 +519,7 @@ a protocol is single-dispatch on `Self` and pure; an effect IS an
 effect row and is parametric over `(a, i)` — exactly the axis of
 variation Decision 1 identified. `effect Repository[a, i]` with ops
 returning the generic `Option[a]` / `Bool` is verified to compile
-and run against kai 0.84.0 (fixture
+and run against kai 0.98.0 (fixture
 `tests/repository_effect_roundtrip.kai`).
 
 The in-memory adapter is **built on the value form's logic, not a

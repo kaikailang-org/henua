@@ -27,8 +27,11 @@
 #
 # Requirements on the host:
 #
-#   - `kai` on PATH (`brew install lnds/kaikai/kaikai`),
-#     version 0.83.0+ for git-dep resolution.
+#   - `kai` on PATH — install via
+#     `curl -fsSL https://raw.githubusercontent.com/kaikailang-org/kaikai/main/install.sh | sh`
+#     or `brew install kaikailang-org/kaikai/kaikai`.
+#     Version 0.98.0+ (the sources use the `var name := init`
+#     cell syntax and naked cell reads introduced there).
 #   - libsqlite3 development headers + library. macOS Homebrew
 #     ships them under `/opt/homebrew/opt/sqlite/`; Linux distros
 #     ship them under `/usr/include` and `/usr/lib` typically.

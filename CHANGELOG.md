@@ -10,6 +10,25 @@ the surface is pre-1.0 (every release may break shape).
 
 ### Changed
 
+- **Sources updated for kaikai 0.98.** Two syntax changes landed
+  upstream between 0.86 and 0.98 and are now reflected in henua:
+
+  - `var` cells are declared with `:=` (`var store : Map[i, a]
+    := initial`); `=` on a `var` is a compile error.
+  - `var` cells are read naked (`map.get(store, key)`); the `@`
+    dereference is now reserved for first-class `Ref[T]` values.
+
+  Both changes touch `henua/repository_effect.kai` and
+  `examples/repository_port/main.kai` only. Behaviour-preserving:
+  tier1 stays 3 ffi + 10 pure fixtures green and the three
+  examples' golden outputs are byte-identical under kaikai 0.98.0.
+  The Makefile's minimum-`kai` note moves from 0.83.0+ to 0.98.0+,
+  since the new cell syntax does not compile on older toolchains.
+
+- **License set to MIT.** `LICENSE` added at the repo root,
+  `license = "MIT"` declared in `kai.toml`, and the README's
+  "TBD" license section resolved.
+
 - **`sqlite_repository` migrated from the borrowed `db: Int`
   handle to kohau's cell-wrapped client.** This closes the debt
   the previous CHANGELOG flagged: *"connection lifecycle moves

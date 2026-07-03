@@ -51,7 +51,7 @@
 # effect rows. An *effect* has the opposite property — it IS an effect
 # row, and it is parametric over the aggregate `a` and the id `i`
 # (`effect Repository[a, i]`, verified parametric over two type
-# params against kai 0.84.0). The effect is the natural port.
+# params against kai 0.98.0). The effect is the natural port.
 #
 # ## Adapter status
 #
@@ -141,16 +141,16 @@ fn run_with_store[a, i, r, e](
   initial: Map[i, a],
   body: () -> r / Repository[a, i] + e
 ) : r / e = {
-  var store : Map[i, a] = initial
+  var store : Map[i, a] := initial
   handle { body() } with Repository[a, i] {
-    find(key, resume)         -> resume(map.get(@store, key))
+    find(key, resume)         -> resume(map.get(store, key))
     save(key, entity, resume) -> {
-      store := map.put(@store, key, entity)
+      store := map.put(store, key, entity)
       resume(())
     }
     delete(key, resume)       -> {
-      let present = map.contains(@store, key)
-      store := map.remove(@store, key)
+      let present = map.contains(store, key)
+      store := map.remove(store, key)
       resume(present)
     }
     return(x)                 -> x
