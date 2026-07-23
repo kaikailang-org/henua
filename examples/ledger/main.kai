@@ -26,15 +26,14 @@
 # Spec context: docs/design.md and docs/examples.md walkthrough.
 
 import henua.repository
+
 import henua.event_bus
+
 import henua.aggregate
 
 type AccountId = String
 
-type Account = {
-  id: AccountId,
-  balance_minor: Int   # balance in minor units (e.g. cents)
-}
+type Account = { id: AccountId, balance_minor: Int }  # balance in minor units (e.g. cents)
 
 type LedgerEvent
   = AccountOpened(AccountId)
@@ -53,10 +52,16 @@ type LedgerEvent
 # events that mixes multiple accounts without manual filtering.
 fn apply_step(acc: Account, ev: LedgerEvent) : Account = match ev {
   AccountOpened(_) -> acc
-  Credited(target, amount) ->
-    if target == acc.id { Account { id: acc.id, balance_minor: acc.balance_minor + amount } } else { acc }
-  Debited(target, amount) ->
-    if target == acc.id { Account { id: acc.id, balance_minor: acc.balance_minor - amount } } else { acc }
+  Credited(target, amount) -> if target == acc.id {
+    Account { id: acc.id, balance_minor: acc.balance_minor + amount }
+  } else {
+    acc
+  }
+  Debited(target, amount) -> if target == acc.id {
+    Account { id: acc.id, balance_minor: acc.balance_minor - amount }
+  } else {
+    acc
+  }
 }
 
 # Tracing subscriber. Receives every event and prints a one-line
@@ -64,9 +69,9 @@ fn apply_step(acc: Account, ev: LedgerEvent) : Account = match ev {
 # `InMemoryEventBus[LedgerEvent, Stdout]` requires from every
 # handler.
 fn trace_event(ev: LedgerEvent) : Unit / Stdout = match ev {
-  AccountOpened(id)       -> Stdout.print("event: opened " ++ id)
-  Credited(id, amount)    -> Stdout.print("event: credited " ++ id ++ " +" ++ int_to_string(amount))
-  Debited(id, amount)     -> Stdout.print("event: debited " ++ id ++ " -" ++ int_to_string(amount))
+  AccountOpened(id) -> Stdout.print("event: opened " ++ id)
+  Credited(id, amount) -> Stdout.print("event: credited " ++ (id ++ (" +" ++ int_to_string(amount))))
+  Debited(id, amount) -> Stdout.print("event: debited " ++ (id ++ (" -" ++ int_to_string(amount))))
 }
 
 # Commit one event end-to-end: fold into the aggregate, save,
@@ -74,12 +79,7 @@ fn trace_event(ev: LedgerEvent) : Unit / Stdout = match ev {
 # this example because we only have one subscriber registered
 # at startup, but the shape leaves room for handlers that
 # register/unregister mid-flow).
-fn commit(
-  repo: InMemoryRepository[Account, AccountId],
-  bus: InMemoryEventBus[LedgerEvent, Stdout],
-  acc: Account,
-  ev: LedgerEvent
-) : Pair[InMemoryRepository[Account, AccountId], Account] / Stdout = {
+fn commit(repo: InMemoryRepository[Account, AccountId], bus: InMemoryEventBus[LedgerEvent, Stdout], acc: Account, ev: LedgerEvent) : Pair[InMemoryRepository[Account, AccountId], Account] / Stdout {
   let next = aggregate.apply_event(acc, ev, apply_step)
   match repository.save(repo, next.id, next) {
     Ok(repo1) -> {
@@ -93,40 +93,34 @@ fn commit(
   }
 }
 
-fn print_account(acc: Account) : Unit / Stdout =
-  Stdout.print("account " ++ acc.id ++ " balance=" ++ int_to_string(acc.balance_minor))
+fn print_account(acc: Account) : Unit / Stdout = Stdout.print("account " ++ (acc.id ++ (" balance=" ++ int_to_string(acc.balance_minor))))
 
-fn main() : Int / Stdout = {
-  let repo0 : InMemoryRepository[Account, AccountId] = repository.make_in_memory()
-  let bus0  : InMemoryEventBus[LedgerEvent, Stdout]  = event_bus.make_in_memory()
-
+fn main() : Int / Stdout {
+  let repo0: InMemoryRepository[Account, AccountId] = repository.make_in_memory()
+  let bus0: InMemoryEventBus[LedgerEvent, Stdout] = event_bus.make_in_memory()
   # Subscribe the tracer.
   let sub = event_bus.subscribe(bus0, trace_event)
   let bus = sub.fst
-
   # Open two accounts. Each starts with a zero-balance state and
   # gets persisted; the AccountOpened event is published.
   let alice0 = Account { id: "alice", balance_minor: 0 }
-  let bob0   = Account { id: "bob",   balance_minor: 0 }
-
+  let bob0 = Account { id: "bob", balance_minor: 0 }
   let step1 = commit(repo0, bus, alice0, AccountOpened("alice"))
   let step2 = commit(step1.fst, bus, bob0, AccountOpened("bob"))
-
   # Credit alice 100, debit bob 30.
   let step3 = commit(step2.fst, bus, step1.snd, Credited("alice", 100))
   let step4 = commit(step3.fst, bus, step2.snd, Debited("bob", 30))
-
   # Print final balances by reading back from the repo.
   Stdout.print("--- final ---")
   match repository.find(step4.fst, "alice") {
     Ok(Some(a)) -> print_account(a)
-    Ok(None)    -> Stdout.print("alice: missing")
-    Err(e)      -> Stdout.print("alice: " ++ repository.repository_error_to_string(e))
+    Ok(None) -> Stdout.print("alice: missing")
+    Err(e) -> Stdout.print("alice: " ++ repository.repository_error_to_string(e))
   }
   match repository.find(step4.fst, "bob") {
     Ok(Some(a)) -> print_account(a)
-    Ok(None)    -> Stdout.print("bob: missing")
-    Err(e)      -> Stdout.print("bob: " ++ repository.repository_error_to_string(e))
+    Ok(None) -> Stdout.print("bob: missing")
+    Err(e) -> Stdout.print("bob: " ++ repository.repository_error_to_string(e))
   }
   Stdout.print("subscribers=" ++ int_to_string(event_bus.subscriber_count(bus)))
   0

@@ -3,14 +3,18 @@
 
 import henua.event_bus
 
-pub type Ev = Ping | Pong
+pub type Ev
+  = Ping
+  | Pong
 
 pub fn a(_ev: Ev) : Unit / Stdout = Stdout.print("A")
+
 pub fn b(_ev: Ev) : Unit / Stdout = Stdout.print("B")
+
 pub fn c(_ev: Ev) : Unit / Stdout = Stdout.print("C")
 
-fn main() : Int / Stdout = {
-  let bus0 : InMemoryEventBus[Ev, Stdout] = event_bus.make_in_memory()
+fn main() : Int / Stdout {
+  let bus0: InMemoryEventBus[Ev, Stdout] = event_bus.make_in_memory()
   let s1 = event_bus.subscribe(bus0, a)
   let s2 = event_bus.subscribe(s1.fst, b)
   let s3 = event_bus.subscribe(s2.fst, c)

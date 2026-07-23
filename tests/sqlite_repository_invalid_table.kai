@@ -13,58 +13,58 @@
 # the acceptance cases issue real DDL through the cell.
 
 import actor
+
 import henua.repository
+
 import henua.sqlite_repository
+
 import kohau.sqlite.client
 
 type Dummy = { x: Int }
 
 fn to_row(d: Dummy) : [String] = [int_to_string(d.x)]
+
 fn from_row(r: [String]) : Option[Dummy] = match r {
   [s] -> match string_to_int(s) {
-           Some(n) -> Some(Dummy { x: n })
-           None    -> None
-         }
+    Some(n) -> Some(Dummy { x: n })
+    None -> None
+  }
   _ -> None
 }
+
 fn id_to_str(i: Int) : String = int_to_string(i)
+
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
-fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] = {
-  let codec = RepositoryCodec {
-    to_row: to_row,
-    from_row: from_row,
-    id_to_string: id_to_str,
-    id_from_string: id_from_str
-  }
-  let r : Result[RepositoryError, SqliteRepository[Dummy, Int]] =
-    sqlite_repository.make_sqlite(c, name, codec)
+fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] {
+  let codec = RepositoryCodec { to_row: to_row, from_row: from_row, id_to_string: id_to_str, id_from_string: id_from_str }
+  let r: Result[SqliteRepository[Dummy, Int], RepositoryError] = sqlite_repository.make_sqlite(c, name, codec)
   match r {
-    Ok(_)  -> Stdout.print(label ++ ": Ok")
-    Err(e) -> Stdout.print(label ++ ": " ++ repository.repository_error_to_string(e))
+    Ok(_) -> Stdout.print(label ++ ": Ok")
+    Err(e) -> Stdout.print(label ++ (": " ++ repository.repository_error_to_string(e)))
   }
 }
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] = {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   # Acceptance cases — must round-trip.
   try_make(c, "plain", "todos")
   try_make(c, "snake", "user_sessions_v2")
   try_make(c, "camel", "OrderItems")
   try_make(c, "underscore_lead", "_internal")
-
   # Rejection cases — every injection / footgun shape.
-  try_make(c, "empty",       "")
-  try_make(c, "space",       "my table")
-  try_make(c, "semicolon",   "todos; DROP TABLE x")
-  try_make(c, "comment",     "todos--")
-  try_make(c, "quote",       "todos'")
+  try_make(c, "empty", "")
+  try_make(c, "space", "my table")
+  try_make(c, "semicolon", "todos; DROP TABLE x")
+  try_make(c, "comment", "todos--")
+  try_make(c, "quote", "todos'")
   try_make(c, "leading_digit", "1todos")
   try_make(c, "punctuation", "todos.x")
-
   client.close(c)
 }
 
-fn main() : Int / Spawn + Ffi + Console = {
-  with_mailbox { client.with_client(":memory:", body) }
+fn main() : Int / Spawn + Ffi + Console {
+  with_mailbox(() => {
+    client.with_client(":memory:", body)
+  })
   0
 }

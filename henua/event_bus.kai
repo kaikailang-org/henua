@@ -56,23 +56,16 @@ pub type InMemoryEventBus[ev, e] = { handlers: [Handler[ev, e]] }
 # Construct an empty bus. The phantom row `e` is inferred from
 # the type of handlers added later; an empty bus typechecks
 # against any concrete `e` until the first handler pins it.
-pub fn make_in_memory() : InMemoryEventBus[ev, e] =
-  InMemoryEventBus { handlers: [] }
+pub fn make_in_memory() : InMemoryEventBus[ev, e] = InMemoryEventBus { handlers: [] }
 
 # Register a handler. Returns a fresh bus plus the index of the
 # new handler (later passed to `unsubscribe` to remove it).
 # Indices are stable for the lifetime of the bus value because
 # `unsubscribe` shifts the underlying list — see the note in
 # `unsubscribe` below.
-pub fn subscribe(
-  bus: InMemoryEventBus[ev, e],
-  handler: Handler[ev, e]
-) : Pair[InMemoryEventBus[ev, e], Int] = {
+pub fn subscribe(bus: InMemoryEventBus[ev, e], handler: Handler[ev, e]) : Pair[InMemoryEventBus[ev, e], Int] {
   let new_handlers = append_handler(bus.handlers, handler)
-  Pair {
-    fst: InMemoryEventBus { handlers: new_handlers },
-    snd: list.length(bus.handlers)
-  }
+  Pair { fst: InMemoryEventBus { handlers: new_handlers }, snd: list.length(bus.handlers) }
 }
 
 # Internal: append a single handler to the end of the list.
@@ -80,8 +73,8 @@ pub fn subscribe(
 # stdlib `[x, ...rest]` shorthand would put new handlers at the
 # head instead — hence the explicit traversal.
 fn append_handler(xs: [Handler[ev, e]], h: Handler[ev, e]) : [Handler[ev, e]] = match xs {
-  []           -> [h]
-  [x]          -> [x, h]
+  [] -> [h]
+  [x] -> [x, h]
   [x, ...rest] -> [x, ...append_handler(rest, h)]
 }
 
@@ -96,22 +89,19 @@ fn append_handler(xs: [Handler[ev, e]], h: Handler[ev, e]) : [Handler[ev, e]] = 
 # subsequent handlers do not run. v1's posture is "trust the
 # handler set"; in v0.2 an explicit fault-isolated bus variant
 # may ship.
-pub fn publish(bus: InMemoryEventBus[ev, e], event: ev) : Unit / e =
-  publish_loop(bus.handlers, event)
+pub fn publish(bus: InMemoryEventBus[ev, e], event: ev) : Unit / e = publish_loop(bus.handlers, event)
 
-fn publish_loop[ev, e](handlers: [Handler[ev, e]], event: ev) : Unit / e =
-  match handlers {
-    []           -> ()
-    [h]          -> h(event)
-    [h, ...rest] -> {
-      h(event)
-      publish_loop(rest, event)
-    }
+fn publish_loop[ev, e](handlers: [Handler[ev, e]], event: ev) : Unit / e = match handlers {
+  [] -> ()
+  [h] -> h(event)
+  [h, ...rest] -> {
+    h(event)
+    publish_loop(rest, event)
   }
+}
 
 # Number of subscribers. Diagnostic helper.
-pub fn subscriber_count(bus: InMemoryEventBus[ev, e]) : Int =
-  list.length(bus.handlers)
+pub fn subscriber_count(bus: InMemoryEventBus[ev, e]) : Int = list.length(bus.handlers)
 
 # Remove the handler at the given index (returned by `subscribe`).
 # Returns a fresh bus with the handler removed; handlers after
@@ -123,14 +113,18 @@ pub fn subscriber_count(bus: InMemoryEventBus[ev, e]) : Int =
 # Callers who need stable identifiers across removals should
 # track their own subscription id externally; v1 keeps the bus
 # minimal.
-pub fn unsubscribe(
-  bus: InMemoryEventBus[ev, e],
-  index: Int
-) : InMemoryEventBus[ev, e] =
-  InMemoryEventBus { handlers: remove_at(bus.handlers, index, 0) }
+pub fn unsubscribe(bus: InMemoryEventBus[ev, e], index: Int) : InMemoryEventBus[ev, e] = InMemoryEventBus { handlers: remove_at(bus.handlers, index, 0) }
 
 fn remove_at(xs: [t], target: Int, i: Int) : [t] = match xs {
-  []           -> []
-  [x]          -> if i == target { [] } else { [x] }
-  [x, ...rest] -> if i == target { rest } else { [x, ...remove_at(rest, target, i + 1)] }
+  [] -> []
+  [x] -> if i == target {
+    []
+  } else {
+    [x]
+  }
+  [x, ...rest] -> if i == target {
+    rest
+  } else {
+    [x, ...remove_at(rest, target, i + 1)]
+  }
 }

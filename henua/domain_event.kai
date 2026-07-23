@@ -66,11 +66,7 @@ pub type EventEnvelope[ev] = { meta: EventMeta, event: ev }
 # because the caller often has a sequence (database autoincrement,
 # UUIDv7) and a clock (already in their effect row) it wants to
 # use coherently.
-pub fn envelope[ev](id: Int, at_unix_ms: Int, event: ev) : EventEnvelope[ev] =
-  EventEnvelope {
-    meta: EventMeta { id: id, at_unix_ms: at_unix_ms },
-    event: event
-  }
+pub fn envelope[ev](id: Int, at_unix_ms: Int, event: ev) : EventEnvelope[ev] = EventEnvelope { meta: EventMeta { id: id, at_unix_ms: at_unix_ms }, event: event }
 
 # Extract the wrapped event. Trivial accessor; provided for
 # symmetry with `envelope` so call sites read uniformly.

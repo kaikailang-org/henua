@@ -62,6 +62,7 @@
 # Spec: `docs/design.md` §*Repository* and §*Repository as a port*.
 
 import collections.map
+
 import henua.repository
 
 # ---- The port -------------------------------------------------------
@@ -115,10 +116,7 @@ pub effect Repository[a, i] {
 # The row variable `e` carries whatever OTHER effects `body` performs
 # (logging, clock, the domain's own effects); `with_in_memory`
 # discharges only `Repository[a, i]` and passes `e` through unchanged.
-pub fn with_in_memory[a, i, r, e](
-  body: () -> r / Repository[a, i] + e
-) : r / e =
-  run_with_store(map.empty(), body)
+pub fn with_in_memory[a, i, r, e](body: () -> r / Repository[a, i] + e) : r / e = run_with_store(map.empty(), body)
 
 # `with_in_memory_seeded(entries, body)` is the same adapter started
 # from a non-empty store — useful for tests and fixtures that want a
@@ -127,32 +125,27 @@ pub fn with_in_memory[a, i, r, e](
 # caller can build it with `repository.make_in_memory()` +
 # `repository.save` and hand the resulting `entries` field in, or
 # build a `Map` directly.
-pub fn with_in_memory_seeded[a, i, r, e](
-  seed: Map[i, a],
-  body: () -> r / Repository[a, i] + e
-) : r / e =
-  run_with_store(seed, body)
+pub fn with_in_memory_seeded[a, i, r, e](seed: Map[i, a], body: () -> r / Repository[a, i] + e) : r / e = run_with_store(seed, body)
 
 # Internal: the shared handler installation. Holds the store in a
 # handler-local cell and routes each op through the reused Map logic.
 # Factored out so `with_in_memory` and `with_in_memory_seeded` share
 # one handler body and differ only in the initial store.
-fn run_with_store[a, i, r, e](
-  initial: Map[i, a],
-  body: () -> r / Repository[a, i] + e
-) : r / e = {
-  var store : Map[i, a] := initial
-  handle { body() } with Repository[a, i] {
-    find(key, resume)         -> resume(map.get(store, key))
+fn run_with_store[a, i, r, e](initial: Map[i, a], body: () -> r / Repository[a, i] + e) : r / e {
+  var store: Map[i, a] := initial
+  handle {
+    body()
+  } with Repository[a, i] {
+    find(key, resume) -> resume(map.get(store, key))
     save(key, entity, resume) -> {
-      store := map.put(store, key, entity)
+      store.set(map.put(store, key, entity))
       resume(())
     }
-    delete(key, resume)       -> {
+    delete(key, resume) -> {
       let present = map.contains(store, key)
-      store := map.remove(store, key)
+      store.set(map.remove(store, key))
       resume(present)
     }
-    return(x)                 -> x
+    return(x) -> x
   }
 }

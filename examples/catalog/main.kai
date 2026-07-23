@@ -20,21 +20,20 @@
 # plus docs/examples.md walkthrough.
 
 import regexp
+
 import regexp.{matches}
+
 import henua.repository
+
 import henua.validation
 
 # Refinement type: a product id is a non-empty lowercase slug of
 # up to 32 characters. The predicate is enforced at narrowing
 # sites (`match x { id : ProductId -> ... }`) and at any point
 # where a `String` is annotated `: ProductId`.
-type ProductId = String where matches ~r/^[a-z][a-z0-9-]{0,31}$/
+type ProductId = String where matches(self, (regexp.compile_or_panic())("^[a-z][a-z0-9-]{0,31}$"))
 
-type Product = {
-  id: String,
-  name: String,
-  price_minor: Int
-}
+type Product = { id: String, name: String, price_minor: Int }
 
 # Construct a Product from raw input, returning a Result that
 # records the first failure encountered. Three checks compose
@@ -44,11 +43,7 @@ type Product = {
 #   2. `name` non-empty.
 #   3. `price_minor` positive (zero-priced items not allowed in
 #      this catalog).
-fn mk_product(
-  id: String,
-  name: String,
-  price_minor: Int
-) : Result[ValidationError, Product] = {
+fn mk_product(id: String, name: String, price_minor: Int) : Result[Product, ValidationError] {
   match validation.non_empty_string(id) {
     Err(e) -> Err(e)
     Ok(id_ok) -> match validate_slug(id_ok) {
@@ -72,24 +67,17 @@ fn mk_product(
 # `FormatMismatch` error so the caller can render it; on
 # success, return the underlying `String` (refinement is opaque
 # at the value level — it carries the same runtime representation).
-fn validate_slug(s: String) : Result[ValidationError, String] =
-  match s {
-    valid : ProductId -> Ok(valid)
-    _                 -> Err(FormatMismatch("id must match ^[a-z][a-z0-9-]{0,31}$"))
-  }
+fn validate_slug(s: String) : Result[String, ValidationError] = match s {
+  valid : ProductId -> Ok(valid)
+  _ -> Err(FormatMismatch("id must match ^[a-z][a-z0-9-]{0,31}$"))
+}
 
-fn print_product(p: Product) : Unit / Stdout =
-  Stdout.print("product " ++ p.id ++ ": " ++ p.name ++ " @ " ++ int_to_string(p.price_minor))
+fn print_product(p: Product) : Unit / Stdout = Stdout.print("product " ++ (p.id ++ (": " ++ (p.name ++ (" @ " ++ int_to_string(p.price_minor))))))
 
 # Try to register a single product. On validation success, save
 # to the repo and return the new repo + a status string. On
 # failure, return the unchanged repo + an error message.
-fn try_register(
-  repo: InMemoryRepository[Product, String],
-  id: String,
-  name: String,
-  price_minor: Int
-) : InMemoryRepository[Product, String] / Stdout = {
+fn try_register(repo: InMemoryRepository[Product, String], id: String, name: String, price_minor: Int) : InMemoryRepository[Product, String] / Stdout {
   match mk_product(id, name, price_minor) {
     Ok(p) -> match repository.save(repo, p.id, p) {
       Ok(repo1) -> {
@@ -102,20 +90,19 @@ fn try_register(
       }
     }
     Err(e) -> {
-      Stdout.print("rejected '" ++ id ++ "': " ++ validation.validation_error_to_string(e))
+      Stdout.print("rejected '" ++ (id ++ ("': " ++ validation.validation_error_to_string(e))))
       repo
     }
   }
 }
 
-fn main() : Int / Stdout = {
-  let repo0 : InMemoryRepository[Product, String] = repository.make_in_memory()
-  let repo1 = try_register(repo0, "apple",       "Apple",       150)
-  let repo2 = try_register(repo1, "banana-pro",  "Banana Pro",  250)
-  let repo3 = try_register(repo2, "Cherry",      "Cherry",      300)   # Capital C — rejected
-  let repo4 = try_register(repo3, "durian",      "",            400)   # empty name — rejected
-  let repo5 = try_register(repo4, "elderberry",  "Elderberry",   75)
-
+fn main() : Int / Stdout {
+  let repo0: InMemoryRepository[Product, String] = repository.make_in_memory()
+  let repo1 = try_register(repo0, "apple", "Apple", 150)
+  let repo2 = try_register(repo1, "banana-pro", "Banana Pro", 250)
+  let repo3 = try_register(repo2, "Cherry", "Cherry", 300)  # Capital C — rejected
+  let repo4 = try_register(repo3, "durian", "", 400)  # empty name — rejected
+  let repo5 = try_register(repo4, "elderberry", "Elderberry", 75)
   Stdout.print("--- catalog ---")
   Stdout.print("size=" ++ int_to_string(repository.size(repo5)))
   list.foreach(repository.all(repo5), print_product)

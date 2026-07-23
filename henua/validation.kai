@@ -61,10 +61,10 @@ pub type ValidationError
 # example/test output and `Stdout.print` traces; production code
 # typically pattern-matches on the variants directly.
 pub fn validation_error_to_string(e: ValidationError) : String = match e {
-  Empty             -> "Empty"
-  OutOfRange(msg)   -> "OutOfRange(" ++ msg ++ ")"
-  FormatMismatch(msg) -> "FormatMismatch(" ++ msg ++ ")"
-  Custom(msg)       -> "Custom(" ++ msg ++ ")"
+  Empty -> "Empty"
+  OutOfRange(msg) -> "OutOfRange(" ++ (msg ++ ")")
+  FormatMismatch(msg) -> "FormatMismatch(" ++ (msg ++ ")")
+  Custom(msg) -> "Custom(" ++ (msg ++ ")")
 }
 
 # Reject empty strings. Returns the original string on success so
@@ -74,22 +74,21 @@ pub fn validation_error_to_string(e: ValidationError) : String = match e {
 #     Ok(s)  -> ...use s...
 #     Err(e) -> ...handle e...
 #   }
-pub fn non_empty_string(s: String) : Result[ValidationError, String] =
-  if string.length(s) == 0 { Err(Empty) } else { Ok(s) }
+pub fn non_empty_string(s: String) : Result[String, ValidationError] = if string.length(s) == 0 {
+  Err(Empty)
+} else {
+  Ok(s)
+}
 
 # Require a string's length to fall within `[min, max]` inclusive.
 # Both bounds checked together — a single failing bound surfaces
 # as one `OutOfRange` error rather than separate min/max errors.
-pub fn string_length_between(
-  s: String,
-  min: Int,
-  max: Int
-) : Result[ValidationError, String] = {
+pub fn string_length_between(s: String, min: Int, max: Int) : Result[String, ValidationError] {
   let n = string.length(s)
   if n < min {
-    Err(OutOfRange("length " ++ int_to_string(n) ++ " < min " ++ int_to_string(min)))
+    Err(OutOfRange("length " ++ (int_to_string(n) ++ (" < min " ++ int_to_string(min)))))
   } else if n > max {
-    Err(OutOfRange("length " ++ int_to_string(n) ++ " > max " ++ int_to_string(max)))
+    Err(OutOfRange("length " ++ (int_to_string(n) ++ (" > max " ++ int_to_string(max)))))
   } else {
     Ok(s)
   }
@@ -98,29 +97,27 @@ pub fn string_length_between(
 # Reject non-positive integers (allow only `n >= 1`). Matches the
 # `PositiveInt = Int where >= 1` refinement type convention. Use
 # `non_negative_int` for the `>= 0` case (which permits zero).
-pub fn positive_int(n: Int) : Result[ValidationError, Int] =
-  if n >= 1 { Ok(n) } else {
-    Err(OutOfRange(int_to_string(n) ++ " is not positive (must be >= 1)"))
-  }
+pub fn positive_int(n: Int) : Result[Int, ValidationError] = if n >= 1 {
+  Ok(n)
+} else {
+  Err(OutOfRange(int_to_string(n) ++ " is not positive (must be >= 1)"))
+}
 
 # Reject negative integers (allow `n >= 0`). Common for counts,
 # balances expressed in minor units, sequence numbers.
-pub fn non_negative_int(n: Int) : Result[ValidationError, Int] =
-  if n >= 0 { Ok(n) } else {
-    Err(OutOfRange(int_to_string(n) ++ " is negative (must be >= 0)"))
-  }
+pub fn non_negative_int(n: Int) : Result[Int, ValidationError] = if n >= 0 {
+  Ok(n)
+} else {
+  Err(OutOfRange(int_to_string(n) ++ " is negative (must be >= 0)"))
+}
 
 # Range check on integers: require `min <= n <= max` inclusive.
 # Both bounds checked together as a single predicate.
-pub fn int_between(
-  n: Int,
-  min: Int,
-  max: Int
-) : Result[ValidationError, Int] = {
+pub fn int_between(n: Int, min: Int, max: Int) : Result[Int, ValidationError] {
   if n < min {
-    Err(OutOfRange(int_to_string(n) ++ " < min " ++ int_to_string(min)))
+    Err(OutOfRange(int_to_string(n) ++ (" < min " ++ int_to_string(min))))
   } else if n > max {
-    Err(OutOfRange(int_to_string(n) ++ " > max " ++ int_to_string(max)))
+    Err(OutOfRange(int_to_string(n) ++ (" > max " ++ int_to_string(max))))
   } else {
     Ok(n)
   }
@@ -134,10 +131,7 @@ pub fn int_between(
 #   validation.and_then(
 #     validation.non_empty_string(raw),
 #     (s) => validation.string_length_between(s, 3, 64))
-pub fn and_then[a, b](
-  step: Result[ValidationError, a],
-  next: (a) -> Result[ValidationError, b]
-) : Result[ValidationError, b] = match step {
-  Ok(v)  -> next(v)
+pub fn and_then[a, b](step: Result[a, ValidationError], next: (a) -> Result[b, ValidationError]) : Result[b, ValidationError] = match step {
+  Ok(v) -> next(v)
   Err(e) -> Err(e)
 }

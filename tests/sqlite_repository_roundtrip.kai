@@ -20,81 +20,97 @@
 # in order; no timestamps.
 
 import actor
+
 import henua.repository
+
 import henua.sqlite_repository
+
 import kohau.sqlite.client
 
 type Todo = { title: String, done: Bool }
 
-fn bool_to_string(b: Bool) : String =
-  if b { "true" } else { "false" }
+fn bool_to_string(b: Bool) : String = if b {
+  "true"
+} else {
+  "false"
+}
 
-fn string_to_bool(s: String) : Option[Bool] =
-  if s == "true" { Some(true) }
-  else if s == "false" { Some(false) }
-  else { None }
+fn string_to_bool(s: String) : Option[Bool] = if s == "true" {
+  Some(true)
+} else if s == "false" {
+  Some(false)
+} else {
+  None
+}
 
-fn todo_to_row(t: Todo) : [String] =
-  [t.title, bool_to_string(t.done)]
+fn todo_to_row(t: Todo) : [String] = [t.title, bool_to_string(t.done)]
 
-fn todo_from_row(r: [String]) : Option[Todo] =
-  match r {
-    [title, done_s] -> match string_to_bool(done_s) {
-                         Some(d) -> Some(Todo { title: title, done: d })
-                         None    -> None
-                       }
-    _ -> None
+fn todo_from_row(r: [String]) : Option[Todo] = match r {
+  [title, done_s] -> match string_to_bool(done_s) {
+    Some(d) -> Some(Todo { title: title, done: d })
+    None -> None
   }
+  _ -> None
+}
 
 fn id_to_str(i: Int) : String = int_to_string(i)
+
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
-fn print_size(label: String, r: SqliteRepository[Todo, Int]) : Unit / Stdout + Actor[SqlMsg] =
-  match sqlite_repository.size(r) {
-    Ok(n)  -> Stdout.print(label ++ " size=" ++ int_to_string(n))
-    Err(e) -> Stdout.print(label ++ " size err=" ++ repository.repository_error_to_string(e))
-  }
+fn print_size(label: String, r: SqliteRepository[Todo, Int]) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.size(r) {
+  Ok(n) -> Stdout.print(label ++ (" size=" ++ int_to_string(n)))
+  Err(e) -> Stdout.print(label ++ (" size err=" ++ repository.repository_error_to_string(e)))
+}
 
-fn print_find(label: String, r: SqliteRepository[Todo, Int], id: Int) : Unit / Stdout + Actor[SqlMsg] =
-  match sqlite_repository.find(r, id) {
-    Ok(Some(t)) -> Stdout.print(label ++ " " ++ t.title ++ " done=" ++ bool_to_string(t.done))
-    Ok(None)    -> Stdout.print(label ++ " None")
-    Err(e)      -> Stdout.print(label ++ " err=" ++ repository.repository_error_to_string(e))
-  }
+fn print_find(label: String, r: SqliteRepository[Todo, Int], id: Int) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.find(r, id) {
+  Ok(Some(t)) -> Stdout.print(label ++ (" " ++ (t.title ++ (" done=" ++ bool_to_string(t.done)))))
+  Ok(None) -> Stdout.print(label ++ " None")
+  Err(e) -> Stdout.print(label ++ (" err=" ++ repository.repository_error_to_string(e)))
+}
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] = {
-  let codec = RepositoryCodec {
-    to_row: todo_to_row,
-    from_row: todo_from_row,
-    id_to_string: id_to_str,
-    id_from_string: id_from_str
-  }
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+  let codec = RepositoryCodec { to_row: todo_to_row, from_row: todo_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
   match sqlite_repository.make_sqlite(c, "todos", codec) {
     Err(e) -> Stdout.print("make err=" ++ repository.repository_error_to_string(e))
     Ok(r0) -> {
       print_size("empty", r0)
-
       let buy = Todo { title: "buy milk", done: false }
       let r1 = match sqlite_repository.save(r0, 1, buy) {
-        Ok(r)  -> { Stdout.print("save 1: ok"); r }
-        Err(e) -> { Stdout.print("save 1: err " ++ repository.repository_error_to_string(e)); r0 }
+        Ok(r) -> {
+          Stdout.print("save 1: ok")
+          r
+        }
+        Err(e) -> {
+          Stdout.print("save 1: err " ++ repository.repository_error_to_string(e))
+          r0
+        }
       }
       print_size("after save 1", r1)
       print_find("find 1:", r1, 1)
-
       # Replace id 1.
       let buy_done = Todo { title: "buy milk", done: true }
       let r2 = match sqlite_repository.save(r1, 1, buy_done) {
-        Ok(r)  -> { Stdout.print("save 1 (replace): ok"); r }
-        Err(e) -> { Stdout.print("save 1 (replace): err " ++ repository.repository_error_to_string(e)); r1 }
+        Ok(r) -> {
+          Stdout.print("save 1 (replace): ok")
+          r
+        }
+        Err(e) -> {
+          Stdout.print("save 1 (replace): err " ++ repository.repository_error_to_string(e))
+          r1
+        }
       }
       print_size("after replace", r2)
       print_find("find 1 after replace:", r2, 1)
-
       # Delete.
       let r3 = match sqlite_repository.delete(r2, 1) {
-        Ok(r)  -> { Stdout.print("delete 1: ok"); r }
-        Err(e) -> { Stdout.print("delete 1: err " ++ repository.repository_error_to_string(e)); r2 }
+        Ok(r) -> {
+          Stdout.print("delete 1: ok")
+          r
+        }
+        Err(e) -> {
+          Stdout.print("delete 1: err " ++ repository.repository_error_to_string(e))
+          r2
+        }
       }
       print_size("after delete", r3)
       print_find("find 1 after delete:", r3, 1)
@@ -103,7 +119,9 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] = {
   client.close(c)
 }
 
-fn main() : Int / Spawn + Ffi + Console = {
-  with_mailbox { client.with_client(":memory:", body) }
+fn main() : Int / Spawn + Ffi + Console {
+  with_mailbox(() => {
+    client.with_client(":memory:", body)
+  })
   0
 }

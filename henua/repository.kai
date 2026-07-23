@@ -50,9 +50,9 @@ pub type RepositoryError
 # example/test output and for `Stdout.print` traces; production
 # code typically pattern-matches on the variants directly.
 pub fn repository_error_to_string(e: RepositoryError) : String = match e {
-  NotFound      -> "NotFound"
-  Conflict(msg) -> "Conflict(" ++ msg ++ ")"
-  Backend(msg)  -> "Backend(" ++ msg ++ ")"
+  NotFound -> "NotFound"
+  Conflict(msg) -> "Conflict(" ++ (msg ++ ")")
+  Backend(msg) -> "Backend(" ++ (msg ++ ")")
 }
 
 # In-memory Repository. Pure, immutable: `save` / `delete` return
@@ -76,8 +76,7 @@ pub type InMemoryRepository[a, i] = { entries: Map[i, a] }
 #     Ok(repo1) -> ...
 #     Err(_)    -> ...
 #   }
-pub fn make_in_memory() : InMemoryRepository[a, i] =
-  InMemoryRepository { entries: map.empty() }
+pub fn make_in_memory() : InMemoryRepository[a, i] = InMemoryRepository { entries: map.empty() }
 
 # Save (insert-or-replace) an entity under the provided id.
 # Returns a new repository containing the entity. Pure: never
@@ -86,12 +85,7 @@ pub fn make_in_memory() : InMemoryRepository[a, i] =
 # uniform with future adapters whose `save` can genuinely fail
 # (e.g. Postgres unique-constraint violation surfaces as
 # `Err(Conflict(...))`).
-pub fn save(
-  repo: InMemoryRepository[a, i],
-  id: i,
-  entity: a
-) : Result[RepositoryError, InMemoryRepository[a, i]] =
-  Ok(InMemoryRepository { entries: map.put(repo.entries, id, entity) })
+pub fn save(repo: InMemoryRepository[a, i], id: i, entity: a) : Result[InMemoryRepository[a, i], RepositoryError] = Ok(InMemoryRepository { entries: map.put(repo.entries, id, entity) })
 
 # Look up an entity by id. Three outcomes:
 #
@@ -107,11 +101,7 @@ pub fn save(
 # to a domain error (`AccountNotKnown`) rather than treat it as an
 # infrastructure failure. Keeping them separate at this layer
 # leaves that decision to the caller.
-pub fn find(
-  repo: InMemoryRepository[a, i],
-  id: i
-) : Result[RepositoryError, Option[a]] =
-  Ok(map.get(repo.entries, id))
+pub fn find(repo: InMemoryRepository[a, i], id: i) : Result[Option[a], RepositoryError] = Ok(map.get(repo.entries, id))
 
 # Remove an entity by id. Returns a new repository with the
 # entity gone. If the id was not present, returns
@@ -120,22 +110,16 @@ pub fn find(
 # a logic bug or a stale reference). Callers that want a
 # tolerant delete should `match` on the error and ignore
 # `NotFound`.
-pub fn delete(
-  repo: InMemoryRepository[a, i],
-  id: i
-) : Result[RepositoryError, InMemoryRepository[a, i]] =
-  if map.contains(repo.entries, id) {
-    Ok(InMemoryRepository { entries: map.remove(repo.entries, id) })
-  } else {
-    Err(NotFound)
-  }
+pub fn delete(repo: InMemoryRepository[a, i], id: i) : Result[InMemoryRepository[a, i], RepositoryError] = if map.contains(repo.entries, id) {
+  Ok(InMemoryRepository { entries: map.remove(repo.entries, id) })
+} else {
+  Err(NotFound)
+}
 
 # Number of entities currently stored. Convenience for tests and
 # diagnostics; production code rarely needs this.
-pub fn size(repo: InMemoryRepository[a, i]) : Int =
-  map.size(repo.entries)
+pub fn size(repo: InMemoryRepository[a, i]) : Int = map.size(repo.entries)
 
 # Iterate all entities currently stored. Order is by id (the
 # `Map` carrier's iteration order — see `stdlib/collections/map.kai`).
-pub fn all(repo: InMemoryRepository[a, i]) : [a] =
-  map.values(repo.entries)
+pub fn all(repo: InMemoryRepository[a, i]) : [a] = map.values(repo.entries)

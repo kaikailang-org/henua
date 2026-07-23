@@ -1,6 +1,6 @@
 name = "henua"
 version = "0.2.0"
-edition = "hanga-roa"
+edition = "orongo"
 license = "MIT"
 
 [dependencies]

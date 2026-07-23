@@ -113,6 +113,7 @@
 # caller-side sanitation stays the first line of defence.
 
 import henua.repository
+
 import kohau.sqlite.client
 
 # Serialiser bundle. Pure functions only — no effects in the
@@ -124,12 +125,7 @@ import kohau.sqlite.client
 #
 # `id_from_string` is allowed to fail (`Option[i]`) because ids come
 # back from SQLite as text and a malformed row is not unrecoverable.
-pub type RepositoryCodec[a, i] = {
-  to_row:         (a) -> [String],
-  from_row:       ([String]) -> Option[a],
-  id_to_string:   (i) -> String,
-  id_from_string: (String) -> Option[i]
-}
+pub type RepositoryCodec[a, i] = { to_row: (a) -> [String], from_row: ([String]) -> Option[a], id_to_string: (i) -> String, id_from_string: (String) -> Option[i] }
 
 # Persistent repository value. Carries the cell-wrapped client pid
 # (NOT a raw connection handle), the table name, the codec, and the
@@ -143,56 +139,52 @@ pub type RepositoryCodec[a, i] = {
 # SqliteRepository[a, i]]` so the surface matches InMemory; the
 # returned value is the *same* repository, unchanged. This keeps
 # `match` ergonomics identical across adapters.
-pub type SqliteRepository[a, i] = {
-  client: Pid[SqlMsg],
-  table:  String,
-  delim:  String,
-  codec:  RepositoryCodec[a, i]
-}
+pub type SqliteRepository[a, i] = { client: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i] }
 
 # Predicate enforced by `make_sqlite` and `make_sqlite_with_delim`
 # on the `table` argument. Accepts the strict SQL-identifier subset
 # documented in §*Security*: first character is ASCII letter or
 # underscore, remaining characters are ASCII letter / digit /
 # underscore, length 1..64.
-fn is_valid_table_name(s: String) : Bool = {
+fn is_valid_table_name(s: String) : Bool {
   let n = string_length(s)
-  if n < 1 { false }
-  else if n > 64 { false }
-  else { is_id_head(string_slice(s, 0, 1)) and is_id_tail_from(s, 1, n) }
+  if n < 1 {
+    false
+  } else if n > 64 {
+    false
+  } else {
+    is_id_head(string_slice(s, 0, 1)) and is_id_tail_from(s, 1, n)
+  }
 }
 
-fn is_id_head(c: String) : Bool =
-  is_ascii_letter(c) or c == "_"
+fn is_id_head(c: String) : Bool = is_ascii_letter(c) or (c == "_")
 
-fn is_id_tail_from(s: String, i: Int, n: Int) : Bool =
-  if i >= n { true }
-  else {
-    let c = string_slice(s, i, 1)
-    if is_ascii_letter(c) or is_ascii_digit(c) or c == "_" {
-      is_id_tail_from(s, i + 1, n)
-    } else { false }
+fn is_id_tail_from(s: String, i: Int, n: Int) : Bool = if i >= n {
+  true
+} else {
+  let c = string_slice(s, i, 1)
+  if (is_ascii_letter(c) or is_ascii_digit(c)) or (c == "_") {
+    is_id_tail_from(s, i + 1, n)
+  } else {
+    false
   }
+}
 
-fn is_ascii_letter(c: String) : Bool =
-  (c >= "a" and c <= "z") or (c >= "A" and c <= "Z")
+fn is_ascii_letter(c: String) : Bool = ((c >= "a") and (c <= "z")) or ((c >= "A") and (c <= "Z"))
 
-fn is_ascii_digit(c: String) : Bool =
-  c >= "0" and c <= "9"
+fn is_ascii_digit(c: String) : Bool = (c >= "0") and (c <= "9")
 
 # Join / split helpers — local thin wrappers over the runtime
 # `string_concat` / `string_split` primitives, kept local so the
 # module's import surface stays minimal (`henua.repository` and
 # `kohau.sqlite.client` only).
-fn join_with(items: [String], sep: String) : String =
-  match items {
-    []         -> ""
-    [x]        -> x
-    [x, ...xs] -> x ++ sep ++ join_with(xs, sep)
-  }
+fn join_with(items: [String], sep: String) : String = match items {
+  [] -> ""
+  [x] -> x
+  [x, ...xs] -> x ++ (sep ++ join_with(xs, sep))
+}
 
-fn split_with(s: String, sep: String) : [String] =
-  string_split(s, sep)
+fn split_with(s: String, sep: String) : [String] = string_split(s, sep)
 
 # Construct an adapter over an existing cell-wrapped client.
 # Creates the table if it does not exist (`CREATE TABLE IF NOT
@@ -217,33 +209,19 @@ fn split_with(s: String, sep: String) : [String] =
 # `make_sqlite_with_delim` for a custom delimiter if the codec emits
 # strings that can contain pipes.
 #[unstable]
-pub fn make_sqlite(
-  c: Pid[SqlMsg],
-  table: String,
-  codec: RepositoryCodec[a, i]
-) : Result[RepositoryError, SqliteRepository[a, i]] / Actor[SqlMsg] =
-  make_sqlite_with_delim(c, table, "|", codec)
+pub fn make_sqlite(c: Pid[SqlMsg], table: String, codec: RepositoryCodec[a, i]) : Result[SqliteRepository[a, i], RepositoryError] / Actor[SqlMsg] = make_sqlite_with_delim(c, table, "|", codec)
 
 # Variant of `make_sqlite` that lets the caller pick a custom
 # delimiter (useful when the codec emits unit-separator bytes).
 # Same `table` validation as `make_sqlite`.
 #[unstable]
-pub fn make_sqlite_with_delim(
-  c: Pid[SqlMsg],
-  table: String,
-  delim: String,
-  codec: RepositoryCodec[a, i]
-) : Result[RepositoryError, SqliteRepository[a, i]] / Actor[SqlMsg] = {
+pub fn make_sqlite_with_delim(c: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i]) : Result[SqliteRepository[a, i], RepositoryError] / Actor[SqlMsg] {
   if not is_valid_table_name(table) {
     Err(Backend("invalid table name: " ++ table))
   } else {
-    let sql =
-      "CREATE TABLE IF NOT EXISTS " ++ table ++
-      " (id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+    let sql = "CREATE TABLE IF NOT EXISTS " ++ (table ++ " (id TEXT PRIMARY KEY, data TEXT NOT NULL)")
     match client.exec(c, sql, []) {
-      Ok(_)    -> Ok(SqliteRepository {
-        client: c, table: table, delim: delim, codec: codec
-      })
+      Ok(_) -> Ok(SqliteRepository { client: c, table: table, delim: delim, codec: codec })
       Err(msg) -> Err(Backend("CREATE TABLE failed: " ++ msg))
     }
   }
@@ -257,17 +235,12 @@ pub fn make_sqlite_with_delim(
 # Values are bound positionally — id and serialised data go through
 # `BindText`, never concatenated into the SQL.
 #[unstable]
-pub fn save(
-  repo: SqliteRepository[a, i],
-  id: i,
-  entity: a
-) : Result[RepositoryError, SqliteRepository[a, i]] / Actor[SqlMsg] = {
-  let id_s   = repo.codec.id_to_string(id)
+pub fn save(repo: SqliteRepository[a, i], id: i, entity: a) : Result[SqliteRepository[a, i], RepositoryError] / Actor[SqlMsg] {
+  let id_s = repo.codec.id_to_string(id)
   let data_s = join_with(repo.codec.to_row(entity), repo.delim)
-  let sql =
-    "INSERT OR REPLACE INTO " ++ repo.table ++ " (id, data) VALUES (?, ?)"
+  let sql = "INSERT OR REPLACE INTO " ++ (repo.table ++ " (id, data) VALUES (?, ?)")
   match client.exec(repo.client, sql, [BindText(id_s), BindText(data_s)]) {
-    Ok(_)    -> Ok(repo)
+    Ok(_) -> Ok(repo)
     Err(msg) -> Err(Backend("save failed: " ++ msg))
   }
 }
@@ -283,20 +256,17 @@ pub fn save(
 # v1 collapses "absent" and "stored row malformed" into `Ok(None)`,
 # unchanged from the borrowed-`db` adapter.
 #[unstable]
-pub fn find(
-  repo: SqliteRepository[a, i],
-  id: i
-) : Result[RepositoryError, Option[a]] / Actor[SqlMsg] = {
+pub fn find(repo: SqliteRepository[a, i], id: i) : Result[Option[a], RepositoryError] / Actor[SqlMsg] {
   let id_s = repo.codec.id_to_string(id)
-  let sql  = "SELECT data FROM " ++ repo.table ++ " WHERE id = ?"
+  let sql = "SELECT data FROM " ++ (repo.table ++ " WHERE id = ?")
   match client.query_row(repo.client, sql, [BindText(id_s)]) {
-    Err(msg)        -> Err(Backend("find failed: " ++ msg))
-    Ok(None)        -> Ok(None)
-    Ok(Some(cols))  -> {
+    Err(msg) -> Err(Backend("find failed: " ++ msg))
+    Ok(None) -> Ok(None)
+    Ok(Some(cols)) -> {
       # The cell reads a single TEXT column (`data`); split it back
       # into the row vector the codec expects.
       let data_s = first_col(cols)
-      let row    = split_with(data_s, repo.delim)
+      let row = split_with(data_s, repo.delim)
       Ok(repo.codec.from_row(row))
     }
   }
@@ -305,26 +275,26 @@ pub fn find(
 # Extract the single `data` column from a one-column row. The cell
 # client's `query_row` returns a `[String]` of length 1 for the
 # `SELECT data` shape this adapter issues.
-fn first_col(cols: [String]) : String =
-  match cols {
-    []        -> ""
-    [x, ..._] -> x
-  }
+fn first_col(cols: [String]) : String = match cols {
+  [] -> ""
+  [x, ...__list_rest_311_12__] -> x
+}
 
 # Remove an entity by id. `Err(NotFound)` if the id is absent —
 # matches the InMemory adapter semantics. The cell's `exec` reply
 # carries the `changes()` count; zero changes after a successful
 # DELETE means the id was not present.
 #[unstable]
-pub fn delete(
-  repo: SqliteRepository[a, i],
-  id: i
-) : Result[RepositoryError, SqliteRepository[a, i]] / Actor[SqlMsg] = {
+pub fn delete(repo: SqliteRepository[a, i], id: i) : Result[SqliteRepository[a, i], RepositoryError] / Actor[SqlMsg] {
   let id_s = repo.codec.id_to_string(id)
-  let sql  = "DELETE FROM " ++ repo.table ++ " WHERE id = ?"
+  let sql = "DELETE FROM " ++ (repo.table ++ " WHERE id = ?")
   match client.exec(repo.client, sql, [BindText(id_s)]) {
-    Err(msg)      -> Err(Backend("delete failed: " ++ msg))
-    Ok(changed)   -> if changed == 0 { Err(NotFound) } else { Ok(repo) }
+    Err(msg) -> Err(Backend("delete failed: " ++ msg))
+    Ok(changed) -> if changed == 0 {
+      Err(NotFound)
+    } else {
+      Ok(repo)
+    }
   }
 }
 
@@ -332,10 +302,10 @@ pub fn delete(
 # `SELECT COUNT(*)`. Useful for fixture assertions; production code
 # should avoid relying on counts computed each call.
 #[unstable]
-pub fn size(repo: SqliteRepository[a, i]) : Result[RepositoryError, Int] / Actor[SqlMsg] = {
+pub fn size(repo: SqliteRepository[a, i]) : Result[Int, RepositoryError] / Actor[SqlMsg] {
   let sql = "SELECT COUNT(*) FROM " ++ repo.table
   match client.query_scalar(repo.client, sql, []) {
-    Ok(n)    -> Ok(n)
+    Ok(n) -> Ok(n)
     Err(msg) -> Err(Backend("size failed: " ++ msg))
   }
 }
