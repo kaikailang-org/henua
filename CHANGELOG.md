@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.3.0] - 2026-07-26
+
+### Changed
+
+- **The sources move to the orongo edition (kaikai 0.104).** kaikai
+  0.101 flipped `Result`'s type-argument order from
+  `Result[Error, Ok]` to `Result[Ok, Error]`, so every annotation in
+  the package stopped typing against the current compiler. The 22
+  affected annotations across `validation`, `repository`,
+  `sqlite_repository` and the fixtures were rewritten with
+  `kai migrate`, and `kai.toml` now declares `edition = "orongo"`.
+
+  `Ok` and `Err` are position-independent, so consumers that match by
+  constructor are unaffected; consumers that *annotate* a henua
+  result must flip the annotation and declare the orongo edition. The
+  rewrite runs through the fmt-writer, so the sources also picked up
+  canonical 0.104 formatting.
+
+- **`kohau` moves to v0.4.0 and `ahu` to v0.2.1.** The SQLite
+  repository reaches kohau's cell-wrapped client, and kohau v0.4.0 is
+  the first release on the orongo edition — earlier tags return
+  `Result` in the pre-flip order and no longer type against the
+  migrated adapter. ahu moves to the version kohau itself depends on,
+  so both paths resolve one copy. tier1 stays green: 3 ffi + 10 pure
+  fixtures pass against kaikai 0.104.
+
 ## [0.2.0] - 2026-07-02
 
 ### Added
