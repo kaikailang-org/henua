@@ -5,3 +5,4 @@ target/
 *.bak
 .DS_Store
 build/
+.kai-cache/

@@ -30,8 +30,10 @@
 #   - `kai` on PATH — install via
 #     `curl -fsSL https://raw.githubusercontent.com/kaikailang-org/kaikai/main/install.sh | sh`
 #     or `brew install kaikailang-org/kaikai/kaikai`.
-#     Version 0.98.0+ (the sources use the `var name := init`
-#     cell syntax and naked cell reads introduced there).
+#     Version 0.101.0+ (the sources annotate `Result[Ok, Error]`,
+#     the argument order the flip landed there; 0.98 brought the
+#     `var name := init` cell syntax and naked cell reads).
+#     Verified against 0.110.0, edition hanga-roa.
 #   - libsqlite3 development headers + library. macOS Homebrew
 #     ships them under `/opt/homebrew/opt/sqlite/`; Linux distros
 #     ship them under `/usr/include` and `/usr/lib` typically.

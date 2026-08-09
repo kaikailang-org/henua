@@ -31,7 +31,7 @@ import henua.validation
 # up to 32 characters. The predicate is enforced at narrowing
 # sites (`match x { id : ProductId -> ... }`) and at any point
 # where a `String` is annotated `: ProductId`.
-type ProductId = String where matches(self, (regexp.compile_or_panic())("^[a-z][a-z0-9-]{0,31}$"))
+type ProductId = String where matches(self, regexp.compile_or_panic()("^[a-z][a-z0-9-]{0,31}$"))
 
 type Product = { id: String, name: String, price_minor: Int }
 

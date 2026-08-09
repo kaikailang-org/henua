@@ -33,7 +33,10 @@ import henua.aggregate
 
 type AccountId = String
 
-type Account = { id: AccountId, balance_minor: Int }  # balance in minor units (e.g. cents)
+type Account = {
+  id: AccountId,
+  balance_minor: Int  # minor units (e.g. cents)
+}
 
 type LedgerEvent
   = AccountOpened(AccountId)

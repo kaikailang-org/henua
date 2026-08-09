@@ -6,28 +6,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.3.1] - 2026-08-09
+
+### Fixed
+
+- **`kai.toml` declared `edition = "orongo"`, an edition that does
+  not exist yet.** The compiler never implemented it: `kaic2` warns
+  that the selected edition is unavailable and silently proceeds
+  under `hanga-roa` semantics, so the pin described something other
+  than what was being compiled. The manifest now declares
+  `edition = "hanga-roa"`, the only edition the toolchain provides.
+
+  The 0.3.0 notes below have been corrected accordingly. The change
+  they describe — `Result`'s type-argument order flipping to
+  `Result[Ok, Error]` in kaikai 0.101 — is real and landed *within*
+  `hanga-roa`; only the attribution to an edition was wrong. No
+  source changed, and consumers need no edition declaration of their
+  own.
+
+### Changed
+
+- **Verified against kaikai 0.110.0.** tier1 passes 13/13 with the
+  sources unchanged. `examples/catalog` picked up canonical
+  formatting (0.110's formatter drops a redundant paren group), and
+  `examples/ledger`'s `Account` record is now written multi-line so
+  its field comment stays attached to `balance_minor`. The Makefile's
+  host requirement moves to 0.101.0+ — the floor the `Result`
+  annotations actually impose.
+- **`sqlite` joins the `[unstable]` opt-ins.** `kai lint` reports the
+  raw `kohau.sqlite` FFI decls reached transitively through the
+  cell-wrapped client; the build was already quiet, and the linter is
+  now quiet too, on the same grounds `cell` is already listed.
+
 ## [0.3.0] - 2026-07-26
 
 ### Changed
 
-- **The sources move to the orongo edition (kaikai 0.104).** kaikai
+- **The sources move to `Result[Ok, Error]` (kaikai 0.104).** kaikai
   0.101 flipped `Result`'s type-argument order from
   `Result[Error, Ok]` to `Result[Ok, Error]`, so every annotation in
   the package stopped typing against the current compiler. The 22
   affected annotations across `validation`, `repository`,
   `sqlite_repository` and the fixtures were rewritten with
-  `kai migrate`, and `kai.toml` now declares `edition = "orongo"`.
+  `kai migrate`. The package stays on `edition = "hanga-roa"`, the
+  only edition the compiler implements today.
 
   `Ok` and `Err` are position-independent, so consumers that match by
   constructor are unaffected; consumers that *annotate* a henua
-  result must flip the annotation and declare the orongo edition. The
-  rewrite runs through the fmt-writer, so the sources also picked up
-  canonical 0.104 formatting.
+  result must flip the annotation. The rewrite runs through the
+  fmt-writer, so the sources also picked up canonical 0.104
+  formatting.
 
 - **`kohau` moves to v0.4.0 and `ahu` to v0.2.1.** The SQLite
   repository reaches kohau's cell-wrapped client, and kohau v0.4.0 is
-  the first release on the orongo edition — earlier tags return
-  `Result` in the pre-flip order and no longer type against the
+  the first release carrying the same `Result` flip — earlier tags
+  return `Result` in the pre-flip order and no longer type against the
   migrated adapter. ahu moves to the version kohau itself depends on,
   so both paths resolve one copy. tier1 stays green: 3 ffi + 10 pure
   fixtures pass against kaikai 0.104.

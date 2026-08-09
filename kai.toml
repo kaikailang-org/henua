@@ -1,6 +1,6 @@
 name = "henua"
 version = "0.3.0"
-edition = "orongo"
+edition = "hanga-roa"
 license = "MIT"
 
 [dependencies]
@@ -8,9 +8,9 @@ license = "MIT"
 # kohau (SQLite via C shim + cell-wrapped client).
 # henua/sqlite_repository.kai imports `kohau.sqlite.client` — the
 # cell-wrapped ergonomic surface, NOT the raw `kohau.sqlite` FFI.
-# Pinned to kohau v0.4.0, the first release on the orongo edition —
-# earlier tags return `Result` in the pre-flip argument order and no
-# longer type against this adapter.
+# Pinned to kohau v0.4.0, the first release carrying the `Result`
+# type-argument flip — earlier tags return `Result` in the pre-flip
+# order and no longer type against this adapter.
 # `kai install` fetches it into the user-level cache and the
 # lockfile records the resolved SHA; the C shim (c/sqlite_shim.{c,h})
 # travels with the cached repo.
@@ -28,12 +28,14 @@ ahu = { source = "github.com/kaikailang-org/ahu", ref = "v0.2.1" }
 # henua's tier1 SQLite-repository fixtures import #[unstable]
 # declarations from henua.sqlite_repository (the adapter shipped in
 # this package), kohau.sqlite.client (the cell-wrapped surface), and
-# ahu.cell (cell.ask, reached transitively — kohau's client is an
-# ahu cell). Opting in here acknowledges the disclosure for the
-# in-tree fixtures so the build is warning-free. Downstream
+# ahu.cell (cell.ask) and kohau.sqlite (the raw FFI), both reached
+# transitively — kohau's client is an ahu cell wrapping the FFI.
+# Opting in here acknowledges the disclosure for the in-tree
+# fixtures so the build and the linter are warning-free. Downstream
 # consumers do the same in their own kai.toml.
 [unstable]
 henua = true
 sqlite_repository = true
 client = true
 cell = true
+sqlite = true
