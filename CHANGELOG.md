@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [Unreleased]
+
+### Changed
+
+- **Verified against kaikai 0.124.1.** tier1 passes 13/13 with the
+  sources unchanged (3 ffi + 10 pure fixtures). No source or manifest
+  change was needed between 0.110.0 and 0.124.1.
+
 ## [0.3.1] - 2026-08-09
 
 ### Fixed
