@@ -8,11 +8,32 @@ the surface is pre-1.0 (every release may break shape).
 
 ## [Unreleased]
 
+### Added
+
+- **A tier1 workflow.** Every pull request and every push to `main`
+  compiles each fixture, runs it, diffs its output, and fails if the
+  build emitted a warning from this package.
+
 ### Changed
 
-- **Verified against kaikai 0.124.1.** tier1 passes 13/13 with the
-  sources unchanged (3 ffi + 10 pure fixtures). No source or manifest
-  change was needed between 0.110.0 and 0.124.1.
+- **Verified against kaikai 0.145.0.** tier1 passes 13/13 with the
+  sources unchanged (3 ffi + 10 pure fixtures). No source change has
+  been needed since 0.110.0.
+
+### Fixed
+
+- **A fresh checkout builds in one pass.** The shim paths are composed
+  from a SHA read out of the lockfile, which does not exist in a fresh
+  checkout — the build generates it. Read immediately, that SHA
+  resolved to the empty string while the makefile was still being
+  parsed, leaving the shim under a directory that never exists, so the
+  first build of a clone could not succeed at all.
+
+- **The `[unstable]` keys are spelled as module paths.** An
+  acknowledgement key is the declaration's mangled module path with the
+  package name on the front — `henua__sqlite_repository`,
+  `kohau__sqlite` — so the bare names the manifest carried matched
+  nothing and silenced nothing.
 
 ## [0.3.1] - 2026-08-09
 
