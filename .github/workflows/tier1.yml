@@ -2,15 +2,10 @@ name: tier1
 
 # Run henua's tier1 fixtures on GitHub's standard hosted runner.
 #
-# Runner: `macos-14`, a GitHub-hosted runner. macOS specifically
-# because the public kaikai toolchain only ships a darwin-arm64 binary
-# today; there is no Linux release, so a Linux runner would have to
-# build the compiler from source. This can move when kaikai publishes
-# a Linux binary.
-#
-# kaikai ships publicly from the `kaikailang-org` Homebrew tap, so
-# `kai` is installed the way a developer installs it — no token, no
-# private clone, no building the compiler from source.
+# `kai` comes from the official installer, which resolves the current
+# release and verifies its sha256. Nothing is pinned on purpose: a
+# pinned version keeps passing against a compiler nobody runs any
+# more, so a release that breaks henua surfaces here instead.
 #
 # `make tier1` runs on a bare checkout on purpose, with no dependency
 # step ahead of it. Fetching the kohau dependency and writing the
@@ -40,8 +35,14 @@ jobs:
       - name: Check out henua
         uses: actions/checkout@v4
 
-      - name: Install kaikai (public Homebrew tap)
-        run: brew install kaikailang-org/kaikai/kaikai
+      - name: Install kaikai (official installer)
+        env:
+          # The installer resolves the release through the GitHub API,
+          # which allows 60 requests an hour unauthenticated.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/kaikailang-org/kaikai/main/install.sh | sh
+          echo "$HOME/.kaikai/bin" >> "$GITHUB_PATH"
 
       - name: Install libsqlite3
         run: brew install sqlite
