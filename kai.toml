@@ -25,17 +25,16 @@ kohau = { source = "github.com/kaikailang-org/kohau", ref = "v0.4.0" }
 # thread a dependency's own deps to the consumer's module path.
 ahu = { source = "github.com/kaikailang-org/ahu", ref = "v0.2.1" }
 
-# henua's tier1 SQLite-repository fixtures import #[unstable]
-# declarations from henua.sqlite_repository (the adapter shipped in
-# this package), kohau.sqlite.client (the cell-wrapped surface), and
-# ahu.cell (cell.ask) and kohau.sqlite (the raw FFI), both reached
-# transitively — kohau's client is an ahu cell wrapping the FFI.
-# Opting in here acknowledges the disclosure for the in-tree
-# fixtures so the build and the linter are warning-free. Downstream
-# consumers do the same in their own kai.toml.
+# henua's SQLite-repository fixtures import #[unstable] declarations
+# from this package's own adapter, from kohau's cell-wrapped client
+# and raw FFI, both reached transitively — kohau's client is an ahu
+# cell wrapping the FFI. A key is the declaration's module path
+# mangled the way the compiler reports it, package name included, so
+# an entry silences only the module it names and a bare `sqlite`
+# matches nothing. Opting in here acknowledges the disclosure for the
+# in-tree fixtures so the build and the linter stay warning-free;
+# downstream consumers do the same in their own kai.toml.
 [unstable]
-henua = true
-sqlite_repository = true
-client = true
-cell = true
-sqlite = true
+henua__sqlite_repository = true
+kohau__sqlite = true
+kohau__sqlite__client = true
