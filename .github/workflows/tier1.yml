@@ -1,0 +1,75 @@
+name: tier1
+
+# Run henua's tier1 fixtures on GitHub's standard hosted runner.
+#
+# Runner: `macos-14`, a GitHub-hosted runner. macOS specifically
+# because the public kaikai toolchain only ships a darwin-arm64 binary
+# today; there is no Linux release, so a Linux runner would have to
+# build the compiler from source. This can move when kaikai publishes
+# a Linux binary.
+#
+# kaikai ships publicly from the `kaikailang-org` Homebrew tap, so
+# `kai` is installed the way a developer installs it — no token, no
+# private clone, no building the compiler from source.
+#
+# `make tier1` runs on a bare checkout on purpose, with no dependency
+# step ahead of it. Fetching the kohau dependency and writing the
+# lockfile are the makefile's own job, and a clone carrying no
+# lockfile is precisely the case that used to fail outright, so the
+# untouched checkout is the thing worth testing rather than something
+# to prepare around.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tier1-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tier1:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Check out henua
+        uses: actions/checkout@v4
+
+      - name: Install kaikai (public Homebrew tap)
+        run: brew install kaikailang-org/kaikai/kaikai
+
+      - name: Install libsqlite3
+        run: brew install sqlite
+
+      - name: Toolchain versions
+        run: |
+          cc --version | head -1
+          make --version | head -1
+          kai --version
+
+      - name: henua tier1 (compile every fixture, run it, diff its output)
+        # kohau and ahu are public, so neither clone needs credentials.
+        # pipefail keeps a make failure from being masked by the pipe.
+        run: |
+          set -o pipefail
+          make tier1 2>&1 | tee build.log
+
+      - name: Confirm the build left no warnings of our own
+        # The unstable-API acknowledgements in kai.toml are keyed by
+        # module path, and a key matching nothing silences nothing —
+        # warnings that are easy to carry unnoticed for months. The
+        # path on the line below each warning says where it came from;
+        # a cached dependency's warnings are not this package's to
+        # answer for, so only paths inside the checkout count.
+        run: |
+          if grep -A1 '^warning' build.log | grep -q "$PWD"; then
+            echo "::error::the build emitted warnings from this package"
+            grep -A3 '^warning' build.log
+            exit 1
+          fi
+          echo "no warnings from this package"
