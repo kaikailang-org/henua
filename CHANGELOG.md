@@ -8,6 +8,22 @@ the surface is pre-1.0 (every release may break shape).
 
 ## [Unreleased]
 
+### Changed
+
+- **The kohau sqlite shim is no longer this package's problem.**
+  kohau v0.5.0 declares it in a `[native]` table, so `kai build`
+  compiles and links it while resolving the dependency. The Makefile
+  used to read the locked kohau SHA out of `kai.lock`, derive the
+  shim's path inside the module cache, and pass it through `CFLAGS`
+  together with the include and library directories; all of that is
+  gone, and the FFI fixtures build with the same plain invocation as
+  the pure ones.
+
+- **The adapter renders kohau's structured error.** kohau's sqlite
+  client returns a `SqliteError` record (code, extended code,
+  message) rather than a string, so `Backend(...)` carries
+  `client.error_to_string(err)`.
+
 ### Added
 
 - **A tier1 workflow.** Every pull request and every push to `main`

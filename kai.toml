@@ -8,13 +8,12 @@ license = "MIT"
 # kohau (SQLite via C shim + cell-wrapped client).
 # henua/sqlite_repository.kai imports `kohau.sqlite.client` — the
 # cell-wrapped ergonomic surface, NOT the raw `kohau.sqlite` FFI.
-# Pinned to kohau v0.4.0, the first release carrying the `Result`
-# type-argument flip — earlier tags return `Result` in the pre-flip
-# order and no longer type against this adapter.
-# `kai install` fetches it into the user-level cache and the
-# lockfile records the resolved SHA; the C shim (c/sqlite_shim.{c,h})
-# travels with the cached repo.
-kohau = { source = "github.com/kaikailang-org/kohau", ref = "v0.4.0" }
+# Pinned to kohau v0.5.0, the first release declaring the sqlite
+# shim in a `[native]` table: the shim is compiled and linked by
+# `kai build` itself, so nothing here passes C flags. Tags before
+# v0.4.0 return `Result` in the pre-flip type-argument order and no
+# longer type against this adapter.
+kohau = { source = "github.com/kaikailang-org/kohau", ref = "v0.5.0" }
 
 # ahu (concurrency / fault-tolerance, layer 2). henua's
 # sqlite_repository delegates to kohau's cell-wrapped client, which
