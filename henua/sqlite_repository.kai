@@ -222,7 +222,7 @@ pub fn make_sqlite_with_delim(c: Pid[SqlMsg], table: String, delim: String, code
     let sql = "CREATE TABLE IF NOT EXISTS " ++ (table ++ " (id TEXT PRIMARY KEY, data TEXT NOT NULL)")
     match client.exec(c, sql, []) {
       Ok(_) -> Ok(SqliteRepository { client: c, table: table, delim: delim, codec: codec })
-      Err(msg) -> Err(Backend("CREATE TABLE failed: " ++ msg))
+      Err(err) -> Err(Backend("CREATE TABLE failed: " ++ client.error_to_string(err)))
     }
   }
 }
@@ -241,7 +241,7 @@ pub fn save(repo: SqliteRepository[a, i], id: i, entity: a) : Result[SqliteRepos
   let sql = "INSERT OR REPLACE INTO " ++ (repo.table ++ " (id, data) VALUES (?, ?)")
   match client.exec(repo.client, sql, [BindText(id_s), BindText(data_s)]) {
     Ok(_) -> Ok(repo)
-    Err(msg) -> Err(Backend("save failed: " ++ msg))
+    Err(err) -> Err(Backend("save failed: " ++ client.error_to_string(err)))
   }
 }
 
@@ -260,7 +260,7 @@ pub fn find(repo: SqliteRepository[a, i], id: i) : Result[Option[a], RepositoryE
   let id_s = repo.codec.id_to_string(id)
   let sql = "SELECT data FROM " ++ (repo.table ++ " WHERE id = ?")
   match client.query_row(repo.client, sql, [BindText(id_s)]) {
-    Err(msg) -> Err(Backend("find failed: " ++ msg))
+    Err(err) -> Err(Backend("find failed: " ++ client.error_to_string(err)))
     Ok(None) -> Ok(None)
     Ok(Some(cols)) -> {
       # The cell reads a single TEXT column (`data`); split it back
@@ -289,7 +289,7 @@ pub fn delete(repo: SqliteRepository[a, i], id: i) : Result[SqliteRepository[a, 
   let id_s = repo.codec.id_to_string(id)
   let sql = "DELETE FROM " ++ (repo.table ++ " WHERE id = ?")
   match client.exec(repo.client, sql, [BindText(id_s)]) {
-    Err(msg) -> Err(Backend("delete failed: " ++ msg))
+    Err(err) -> Err(Backend("delete failed: " ++ client.error_to_string(err)))
     Ok(changed) -> if changed == 0 {
       Err(NotFound)
     } else {
@@ -306,6 +306,6 @@ pub fn size(repo: SqliteRepository[a, i]) : Result[Int, RepositoryError] / Actor
   let sql = "SELECT COUNT(*) FROM " ++ repo.table
   match client.query_scalar(repo.client, sql, []) {
     Ok(n) -> Ok(n)
-    Err(msg) -> Err(Backend("size failed: " ++ msg))
+    Err(err) -> Err(Backend("size failed: " ++ client.error_to_string(err)))
   }
 }
