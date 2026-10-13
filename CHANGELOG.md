@@ -12,7 +12,9 @@ the surface is pre-1.0 (every release may break shape).
 
 - **A tier1 workflow.** Every pull request and every push to `main`
   compiles each fixture, runs it, diffs its output, and fails if the
-  build emitted a warning from this package.
+  build emitted a warning from this package. The compiler comes from
+  the official installer, unpinned, so a release that breaks henua
+  surfaces as a failed run.
 
 ### Changed
 
