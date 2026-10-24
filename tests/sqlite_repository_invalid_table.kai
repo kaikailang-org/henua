@@ -1,4 +1,4 @@
-# tests/sqlite_repository_invalid_table.kai — make_sqlite rejects
+# tests/sqlite_repository_invalid_table.kai — with_sqlite rejects
 # table names that fall outside the strict SQL-identifier subset
 # (see sqlite_repository §*Security*).
 #
@@ -10,11 +10,14 @@
 # Runs through the cell-wrapped client — the body is in
 # `Actor[SqlMsg]`, no `Ffi`. The table-name validation is
 # caller-side (no SQLite round-trip needed for the rejections), but
-# the acceptance cases issue real DDL through the cell.
+# the acceptance cases issue real DDL through the cell. A rejected
+# name never runs the body.
 
 import actor
 
 import henua.repository
+
+import henua.repository_effect
 
 import henua.sqlite_repository
 
@@ -38,7 +41,7 @@ fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
 fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] {
   let codec = RepositoryCodec { to_row: to_row, from_row: from_row, id_to_string: id_to_str, id_from_string: id_from_str }
-  let r: Result[SqliteRepository[Dummy, Int], RepositoryError] = sqlite_repository.make_sqlite(c, name, codec)
+  let r: Result[Unit, RepositoryError] = sqlite_repository.with_sqlite(c, name, codec, () => Repository.save(1, Dummy { x: 1 }))
   match r {
     Ok(_) -> Stdout.print(label ++ ": Ok")
     Err(e) -> Stdout.print(label ++ (": " ++ repository.repository_error_to_string(e)))

@@ -1,13 +1,15 @@
-# tests/sqlite_repository_not_found.kai — delete on absent id
-# returns `Err(NotFound)`. Mirrors the InMemory adapter's
-# `repository_delete_missing.kai` fixture against the SQLite
-# backend, through the cell-wrapped client.
+# tests/sqlite_repository_not_found.kai — absent ids against the
+# SQLite backend: `delete` returns False and `find` returns None.
+# Mirrors the in-memory adapter's behaviour in
+# `repository_effect_roundtrip.kai`, through the cell-wrapped client.
 #
 # The body runs in `Actor[SqlMsg]` — no `Ffi`.
 
 import actor
 
 import henua.repository
+
+import henua.repository_effect
 
 import henua.sqlite_repository
 
@@ -25,40 +27,31 @@ fn id_to_str(i: Int) : String = int_to_string(i)
 
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
+fn yes_no(b: Bool) : String = if b {
+  "True"
+} else {
+  "False"
+}
+
+fn scenario() : Unit / Repository[String, Int] + Stdout {
+  Stdout.print("delete 7 in empty: " ++ yes_no(Repository.delete(7)))
+  match Repository.find(7) {
+    Some(s) -> Stdout.print("find 7 in empty: unexpected Some(" ++ (s ++ ")"))
+    None -> Stdout.print("find 7 in empty: None")
+  }
+  Repository.save(1, "alpha")
+  Stdout.print("delete 99 after save 1: " ++ yes_no(Repository.delete(99)))
+  match Repository.find(1) {
+    Some(s) -> Stdout.print("find 1 after failed delete: " ++ s)
+    None -> Stdout.print("find 1 after failed delete: unexpected None")
+  }
+}
+
 fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   let codec = RepositoryCodec { to_row: s_to_row, from_row: s_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
-  match sqlite_repository.make_sqlite(c, "items", codec) {
-    Err(e) -> Stdout.print("make err=" ++ repository.repository_error_to_string(e))
-    Ok(r) -> {
-      # delete on empty table — expect NotFound.
-      match sqlite_repository.delete(r, 7) {
-        Err(NotFound) -> Stdout.print("delete 7 in empty: NotFound (correct)")
-        Ok(_) -> Stdout.print("delete 7 in empty: unexpected Ok")
-        Err(e) -> Stdout.print("delete 7 in empty: " ++ repository.repository_error_to_string(e))
-      }
-      # find on empty — Ok(None).
-      match sqlite_repository.find(r, 7) {
-        Ok(None) -> Stdout.print("find 7 in empty: Ok(None) (correct)")
-        Ok(Some(s)) -> Stdout.print("find 7 in empty: unexpected Some(" ++ (s ++ ")"))
-        Err(e) -> Stdout.print("find 7 in empty: " ++ repository.repository_error_to_string(e))
-      }
-      # Save id 1, then delete id 99 — still NotFound; r unchanged.
-      let r1 = match sqlite_repository.save(r, 1, "alpha") {
-        Ok(rr) -> rr
-        Err(_) -> r
-      }
-      match sqlite_repository.delete(r1, 99) {
-        Err(NotFound) -> Stdout.print("delete 99 after save 1: NotFound (correct)")
-        Ok(_) -> Stdout.print("delete 99 after save 1: unexpected Ok")
-        Err(e) -> Stdout.print("delete 99 after save 1: " ++ repository.repository_error_to_string(e))
-      }
-      # Confirm id 1 is still there.
-      match sqlite_repository.find(r1, 1) {
-        Ok(Some(s)) -> Stdout.print("find 1 after failed delete: " ++ s)
-        Ok(None) -> Stdout.print("find 1 after failed delete: unexpected None")
-        Err(e) -> Stdout.print("find 1 after failed delete: " ++ repository.repository_error_to_string(e))
-      }
-    }
+  match sqlite_repository.with_sqlite(c, "items", codec, scenario) {
+    Ok(_) -> ()
+    Err(e) -> Stdout.print("err=" ++ repository.repository_error_to_string(e))
   }
   client.close(c)
 }

@@ -1,0 +1,52 @@
+# tests/sqlite_repository_backend_error.kai — a statement that fails
+# mid-body aborts it: the handler does not resume, and `with_sqlite`
+# returns `Err(Backend(...))` naming the failed operation.
+#
+# The table is dropped behind the adapter's back, so the next `save`
+# fails with SQLite's "no such table".
+
+import actor
+
+import henua.repository
+
+import henua.repository_effect
+
+import henua.sqlite_repository
+
+import kohau.sqlite.client
+
+fn s_to_row(s: String) : [String] = [s]
+
+fn s_from_row(r: [String]) : Option[String] = match r {
+  [x] -> Some(x)
+  _ -> None
+}
+
+fn id_to_str(i: Int) : String = int_to_string(i)
+
+fn id_from_str(s: String) : Option[Int] = string_to_int(s)
+
+fn scenario(c: Pid[SqlMsg]) : Int / Repository[String, Int] + Stdout + Actor[SqlMsg] {
+  Repository.save(1, "alpha")
+  Stdout.print("save 1: done")
+  let _ = client.exec(c, "DROP TABLE items", [])
+  Repository.save(2, "beta")
+  Stdout.print("save 2: done (unexpected)")
+  0
+}
+
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+  let codec = RepositoryCodec { to_row: s_to_row, from_row: s_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
+  match sqlite_repository.with_sqlite(c, "items", codec, () => scenario(c)) {
+    Ok(_) -> Stdout.print("result: Ok (unexpected)")
+    Err(e) -> Stdout.print("result: " ++ repository.repository_error_to_string(e))
+  }
+  client.close(c)
+}
+
+fn main() : Int / Spawn + Ffi + Console {
+  with_mailbox(() => {
+    client.with_client(":memory:", body)
+  })
+  0
+}

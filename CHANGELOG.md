@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: the SQLite adapter handles the Repository port.**
+  `sqlite_repository.with_sqlite(c, table, codec, body)` (and
+  `with_sqlite_delim`) validates the table name, creates the table,
+  and runs `body` under a `Repository[a, i]` handler, returning
+  `Result[r, RepositoryError]`. Domain code calls `Repository.find /
+  save / delete` exactly as under `with_in_memory`. A statement that
+  fails mid-body aborts it with `Err(Backend(...))`; `delete` of an
+  absent id returns `False` rather than `Err(NotFound)`.
+  `SqliteRepository`, `make_sqlite`, `make_sqlite_with_delim` and the
+  value-form `save / find / delete` are gone: kaikai 0.165.0 rejects
+  returning a `Pid` held in a record field, so the value could no
+  longer be built. `size(c, table)` takes the client and table name.
+
+- **Requires kaikai 0.174.0.** 0.167.0 through 0.173.0 reject
+  `event_bus.subscribe` and `repository_effect.with_in_memory` with
+  effects they do not perform (lnds/kaikai#3142). tier1 passes 14/14
+  on 0.174.0 (4 ffi + 10 pure fixtures).
+
+### Added
+
+- **`tests/sqlite_repository_backend_error.kai`**: a statement that
+  fails mid-body aborts it and surfaces as `Err(Backend(...))`.
+
+### Fixed
+
+- **`examples/catalog` compiles again.** The edition migration had
+  rewritten its `ProductId` refinement as
+  `regexp.compile_or_panic()("...")`, a call with no argument; it is
+  back to the `~r/.../` literal.
+
 ## [0.4.0] - 2026-10-12
 
 ### Changed

@@ -1,4 +1,4 @@
-delete 7 in empty: NotFound (correct)
-find 7 in empty: Ok(None) (correct)
-delete 99 after save 1: NotFound (correct)
+delete 7 in empty: False
+find 7 in empty: None
+delete 99 after save 1: False
 find 1 after failed delete: alpha

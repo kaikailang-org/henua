@@ -6,12 +6,12 @@ ecosystem stack; consumes [kohau](https://github.com/kaikailang-org/kohau)
 for persistence and is consumed by [manutara](https://github.com/kaikailang-org/manutara)
 (web) and hopu (background jobs).
 
-> **Status:** v0.1 scaffolding shipped. Repository, EventBus,
-> Aggregate, Domain Event, Validation, and Bounded Context
-> conventions are in place with in-memory reference adapters.
-> Database-backed adapters (Postgres, SQLite via `kohau`) and
-> event-sourcing primitives are explicit v0.2 scope. Design and
-> roadmap live in `docs/design.md`.
+> **Status:** Repository (as a value and as the `Repository[a, i]`
+> effect), EventBus, Aggregate, Domain Event, Validation, and
+> Bounded Context conventions are in place with in-memory reference
+> adapters, plus a SQLite adapter for the Repository port via
+> `kohau`. Postgres and event-sourcing primitives are still ahead.
+> Design and roadmap live in `docs/design.md`.
 
 ## Why
 
@@ -44,6 +44,13 @@ cell-based wrapper that runs the same operation inside an ahu cell.
 The pure form is for tests, fixtures, and prototyping; the cell form
 is for production.
 
+For the Repository, the cell sits behind the port. Domain code names
+only the `Repository[a, i]` effect; the SQLite adapter
+(`sqlite_repository.with_sqlite`) handles it by talking to kohau's
+cell-wrapped client. A cell's pid lives only inside the scope that
+spawned it, so adapters take it as a parameter and keep it inside
+their handler rather than storing it in a value.
+
 This is not optional. Implementations that bypass ahu — direct
 mutation, raw `spawn`, ad-hoc supervision — are out of scope for
 henua. If a use case can't be expressed via ahu primitives, the gap
@@ -65,6 +72,8 @@ henua/
 │   └── examples.md             # walk-through of the example programs
 ├── henua/                      # the importable kaikai modules
 │   ├── repository.kai          # Repository convention + InMemoryRepository[a, i]
+│   ├── repository_effect.kai   # Repository[a, i] effect (the port) + in-memory adapter
+│   ├── sqlite_repository.kai   # SQLite adapter for the port, via kohau
 │   ├── aggregate.kai           # Aggregate apply / fold helpers
 │   ├── domain_event.kai        # EventMeta + EventEnvelope[ev] conventions
 │   ├── event_bus.kai           # EventBus convention + InMemoryEventBus[ev, e]
@@ -72,13 +81,15 @@ henua/
 │   └── bounded_context.kai     # doc-only module
 ├── examples/
 │   ├── ledger/                 # Repository + EventBus + Aggregate end-to-end
-│   └── catalog/                # Repository + refinement-type validation
+│   ├── catalog/                # Repository + refinement-type validation
+│   └── repository_port/        # domain code against the Repository effect
 └── tests/                      # tier1 fixtures, each with .out.expected
 ```
 
 ## Building
 
-The kaikai toolchain (`kai`) on `PATH` is the only prerequisite.
+The kaikai toolchain (`kai`) on `PATH`, version 0.174.0 or newer, is
+the only prerequisite. The SQLite fixtures also need libsqlite3.
 
 ```sh
 make tier1                      # compile every fixture, diff stdout vs golden

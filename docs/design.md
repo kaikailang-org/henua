@@ -509,8 +509,8 @@ Repository.save / Repository.delete`. It is **structurally
 incapable** of naming a concrete repository — the language gives
 it no handle to one. Which adapter is plugged in is decided by the
 enclosing handler at the composition root
-(`repository_effect.with_in_memory` today; kohau-backed
-`with_sqlite` / `with_postgres` later). The effect-row checker
+(`repository_effect.with_in_memory`, kohau-backed
+`sqlite_repository.with_sqlite`, and `with_postgres` later). The effect-row checker
 enforces the dependency rule that mainstream languages leave to
 discipline + a DI container.
 
@@ -544,10 +544,18 @@ Guidance.
 This is the same two-shape discipline ahu and kohau already pin
 ("pure form for tests / wrapped form for production"); henua now
 matches it for the Repository. The fallible-adapter error story
-(infrastructure failures from a real database) rides a `Fail`-shaped
-effect on the adapter's own row rather than `find`'s result — pinned
-when the first kohau-backed adapter (`with_sqlite`) lands; v0.2
-scope.
+(infrastructure failures from a real database) rides the adapter's
+own result rather than `find`'s: `with_sqlite` returns
+`Result[r, RepositoryError]`, and a statement that fails aborts the
+body (the handler does not resume) with `Err(Backend(...))`.
+
+The SQLite adapter takes kohau's client pid as a parameter and
+keeps it inside the handler. kaikai rejects a function that returns
+a `Pid` held in a record field (the pid lives only inside the
+`with_client` scope that spawned the cell), so an earlier
+`SqliteRepository` value carrying the pid could no longer be built;
+the handler is the shape the type system leaves, and it is the port
+the design already called for.
 
 ## Roadmap v0.2
 
@@ -555,10 +563,10 @@ Capabilities scoped out of v0.1, explicitly. The shape they
 will take is sketched here so future contributors can match
 real use cases to the right slot.
 
-- **Persistent Repositories via kohau.** `henua.postgres_repository`,
-  `henua.sqlite_repository` once `kohau` ships. Same
-  `save / find / delete` convention with `/ kohau.Db` in every
-  effect row.
+- **Persistent Repositories via kohau.** SQLite shipped as a
+  handler for the `Repository[a, i]` port
+  (`henua.sqlite_repository.with_sqlite`); Postgres follows the same
+  shape over kohau's postgres client.
 - **Event sourcing.** Persistent event streams, stream-version
   identifiers, snapshot+replay. The `aggregate.fold_events`
   helper is the v0.1 building block; the v0.2 lane adds a

@@ -1,27 +1,25 @@
-# tests/sqlite_repository_roundtrip.kai — SqliteRepository basics
-# against an in-memory SQLite database, through the cell-wrapped
+# tests/sqlite_repository_roundtrip.kai — the SQLite Repository
+# adapter against an in-memory database, through the cell-wrapped
 # client (`kohau.sqlite.client`).
 #
 # Coverage:
-#   - with_client opens the connection + spawns the cell
-#   - make_sqlite + size==0
-#   - save returns Ok, size==1
-#   - find returns Ok(Some(entity)) for present id
-#   - save twice on same id replaces (size still 1)
-#   - find after replace returns the new value
-#   - delete returns Ok, size==0
-#   - find after delete returns Ok(None)
-#   - client.close — the cell closes the connection
+#   - with_sqlite creates the table and installs the handler
+#   - save, then size==1 and find returns the entity
+#   - save twice on the same id replaces (size still 1)
+#   - delete returns True, then find returns None and size==0
+#   - the body's result comes back as Ok
+#   - client.close: the cell closes the connection
 #
-# The body runs in `Actor[SqlMsg] + Console` — NO `Ffi`. The cell
-# owns the FFI boundary; this fixture never touches a raw handle.
+# The domain functions name only `Repository[Todo, Int]`; they would
+# run unchanged under `repository_effect.with_in_memory`.
 #
-# Trace is deterministic: `:memory:` is fresh per run; ids inserted
-# in order; no timestamps.
+# Trace is deterministic: `:memory:` is fresh per run; no timestamps.
 
 import actor
 
 import henua.repository
+
+import henua.repository_effect
 
 import henua.sqlite_repository
 
@@ -57,64 +55,35 @@ fn id_to_str(i: Int) : String = int_to_string(i)
 
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
-fn print_size(label: String, r: SqliteRepository[Todo, Int]) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.size(r) {
+fn print_find(label: String, id: Int) : Unit / Repository[Todo, Int] + Stdout = match Repository.find(id) {
+  Some(t) -> Stdout.print(label ++ (" " ++ (t.title ++ (" done=" ++ bool_to_string(t.done)))))
+  None -> Stdout.print(label ++ " None")
+}
+
+fn print_size(c: Pid[SqlMsg], label: String) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.size(c, "todos") {
   Ok(n) -> Stdout.print(label ++ (" size=" ++ int_to_string(n)))
   Err(e) -> Stdout.print(label ++ (" size err=" ++ repository.repository_error_to_string(e)))
 }
 
-fn print_find(label: String, r: SqliteRepository[Todo, Int], id: Int) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.find(r, id) {
-  Ok(Some(t)) -> Stdout.print(label ++ (" " ++ (t.title ++ (" done=" ++ bool_to_string(t.done)))))
-  Ok(None) -> Stdout.print(label ++ " None")
-  Err(e) -> Stdout.print(label ++ (" err=" ++ repository.repository_error_to_string(e)))
+fn scenario(c: Pid[SqlMsg]) : Int / Repository[Todo, Int] + Stdout + Actor[SqlMsg] {
+  print_size(c, "empty")
+  Repository.save(1, Todo { title: "buy milk", done: false })
+  print_size(c, "after save 1")
+  print_find("find 1:", 1)
+  Repository.save(1, Todo { title: "buy milk", done: true })
+  print_size(c, "after replace")
+  print_find("find 1 after replace:", 1)
+  Stdout.print("delete 1: " ++ bool_to_string(Repository.delete(1)))
+  print_size(c, "after delete")
+  print_find("find 1 after delete:", 1)
+  42
 }
 
 fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   let codec = RepositoryCodec { to_row: todo_to_row, from_row: todo_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
-  match sqlite_repository.make_sqlite(c, "todos", codec) {
-    Err(e) -> Stdout.print("make err=" ++ repository.repository_error_to_string(e))
-    Ok(r0) -> {
-      print_size("empty", r0)
-      let buy = Todo { title: "buy milk", done: false }
-      let r1 = match sqlite_repository.save(r0, 1, buy) {
-        Ok(r) -> {
-          Stdout.print("save 1: ok")
-          r
-        }
-        Err(e) -> {
-          Stdout.print("save 1: err " ++ repository.repository_error_to_string(e))
-          r0
-        }
-      }
-      print_size("after save 1", r1)
-      print_find("find 1:", r1, 1)
-      # Replace id 1.
-      let buy_done = Todo { title: "buy milk", done: true }
-      let r2 = match sqlite_repository.save(r1, 1, buy_done) {
-        Ok(r) -> {
-          Stdout.print("save 1 (replace): ok")
-          r
-        }
-        Err(e) -> {
-          Stdout.print("save 1 (replace): err " ++ repository.repository_error_to_string(e))
-          r1
-        }
-      }
-      print_size("after replace", r2)
-      print_find("find 1 after replace:", r2, 1)
-      # Delete.
-      let r3 = match sqlite_repository.delete(r2, 1) {
-        Ok(r) -> {
-          Stdout.print("delete 1: ok")
-          r
-        }
-        Err(e) -> {
-          Stdout.print("delete 1: err " ++ repository.repository_error_to_string(e))
-          r2
-        }
-      }
-      print_size("after delete", r3)
-      print_find("find 1 after delete:", r3, 1)
-    }
+  match sqlite_repository.with_sqlite(c, "todos", codec, () => scenario(c)) {
+    Ok(n) -> Stdout.print("result: Ok(" ++ (int_to_string(n) ++ ")"))
+    Err(e) -> Stdout.print("result: " ++ repository.repository_error_to_string(e))
   }
   client.close(c)
 }

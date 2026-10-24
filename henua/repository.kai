@@ -19,7 +19,10 @@
 #
 #   `henua/repository.kai`           InMemoryRepository (this file)
 #   `henua/postgres_repository.kai`  PostgresRepository (future, via kohau)
-#   `henua/sqlite_repository.kai`    SqliteRepository  (future, via kohau)
+#
+# Persistent adapters handle the `Repository[a, i]` effect instead
+# (`henua/repository_effect.kai`): SQLite lives in
+# `henua/sqlite_repository.kai`.
 #
 # Downstream code names the concrete repository it wants. The
 # pattern — `save / find / delete` taking `(repo, ...)` and

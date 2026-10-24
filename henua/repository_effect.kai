@@ -19,8 +19,9 @@
 # row and calls `Repository.find` / `Repository.save` / `Repository.delete`.
 # It cannot name a concrete repository type — the language gives it
 # no handle to one. Which adapter is plugged in is decided by the
-# enclosing handler (`with_in_memory`, or a future kohau-backed
-# `with_sqlite` / `with_postgres`), installed at the composition
+# enclosing handler (`with_in_memory`, kohau-backed
+# `sqlite_repository.with_sqlite`, or a future `with_postgres`),
+# installed at the composition
 # root. This is hexagonal architecture's *port / adapter / dependency
 # rule*, enforced by the effect-row checker rather than by convention:
 # a domain function whose row is `/ Repository[a, i]` is structurally
@@ -56,7 +57,9 @@
 # ## Adapter status
 #
 #   `with_in_memory`         — this file. Pure Map-backed, handler-local.
-#   `with_sqlite`  (future)  — kohau-backed, carries `/ Db` internally.
+#   `with_sqlite`            — `henua/sqlite_repository.kai`. kohau-backed,
+#                              runs in `Actor[SqlMsg]`; a failed statement
+#                              aborts the body as `Err(Backend(...))`.
 #   `with_postgres`(future)  — kohau-backed, native wire protocol.
 #
 # Spec: `docs/design.md` §*Repository* and §*Repository as a port*.
@@ -79,8 +82,9 @@ import henua.repository
 #                     split collapses here into `Option[a]` for the
 #                     in-memory adapter (which never fails on lookup);
 #                     fallible adapters surface infrastructure errors
-#                     through a `Fail`-shaped effect added to the
-#                     handler's own row, not through `find`'s result.
+#                     through the handler's own result, not through
+#                     `find`'s: `with_sqlite` aborts the body and
+#                     returns `Err(Backend(...))`.
 #   - `save(key, e)`: insert-or-replace. No return value — the effect
 #                     IS the write.
 #   - `delete(key)` : returns whether the key was present (mirrors the
