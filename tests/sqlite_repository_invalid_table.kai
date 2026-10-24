@@ -3,7 +3,9 @@
 # (see sqlite_repository §*Security*).
 #
 # Coverage: the four canonical injection / footgun shapes plus the
-# boundary cases the validator must accept. Each rejection emits
+# boundary cases the validator must accept (one character, the
+# a/z/A/Z/0/9 range edges, exactly 64 characters) and the first
+# length it must reject (65). Each rejection emits
 # `Err(Backend("invalid table name: <input>"))`; the acceptance
 # cases round-trip through DDL.
 #
@@ -39,6 +41,12 @@ fn id_to_str(i: Int) : String = int_to_string(i)
 
 fn id_from_str(s: String) : Option[Int] = string_to_int(s)
 
+fn string_repeat(s: String, n: Int) : String = if n <= 0 {
+  ""
+} else {
+  s ++ string_repeat(s, n - 1)
+}
+
 fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] {
   let codec = RepositoryCodec { to_row: to_row, from_row: from_row, id_to_string: id_to_str, id_from_string: id_from_str }
   let r: Result[Unit, RepositoryError] = sqlite_repository.with_sqlite(c, name, codec, () => Repository.save(1, Dummy { x: 1 }))
@@ -54,6 +62,10 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   try_make(c, "snake", "user_sessions_v2")
   try_make(c, "camel", "OrderItems")
   try_make(c, "underscore_lead", "_internal")
+  try_make(c, "single_char", "t")
+  try_make(c, "letter_edges", "azAZ")
+  try_make(c, "digit_edges", "t09")
+  try_make(c, "max_length", string_repeat("a", 64))
   # Rejection cases — every injection / footgun shape.
   try_make(c, "empty", "")
   try_make(c, "space", "my table")
@@ -62,6 +74,7 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   try_make(c, "quote", "todos'")
   try_make(c, "leading_digit", "1todos")
   try_make(c, "punctuation", "todos.x")
+  try_make(c, "too_long", string_repeat("a", 65))
   client.close(c)
 }
 
