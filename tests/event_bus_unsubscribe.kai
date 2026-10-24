@@ -1,5 +1,6 @@
 # tests/event_bus_unsubscribe.kai — unsubscribe removes a single
-# handler; later handlers shift down by one.
+# handler; later handlers shift down by one. Removing the last
+# handler works, and an out-of-range index is a no-op.
 
 import henua.event_bus
 
@@ -26,5 +27,14 @@ fn main() : Int / Stdout {
   Stdout.print("after unsub count=" ++ int_to_string(event_bus.subscriber_count(bus_after)))
   Stdout.print("--- after unsub ---")
   event_bus.publish(bus_after, Tick)
+  # Drop the last handler (C, now index 1).
+  let bus_tail = event_bus.unsubscribe(bus_after, 1)
+  Stdout.print("--- after unsub last ---")
+  event_bus.publish(bus_tail, Tick)
+  # An out-of-range index leaves the bus unchanged.
+  let bus_same = event_bus.unsubscribe(bus_full, 3)
+  Stdout.print("out-of-range count=" ++ int_to_string(event_bus.subscriber_count(bus_same)))
+  Stdout.print("--- after out-of-range unsub ---")
+  event_bus.publish(bus_same, Tick)
   0
 }

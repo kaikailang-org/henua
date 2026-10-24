@@ -6,3 +6,10 @@ after unsub count=2
 --- after unsub ---
 A fires
 C fires
+--- after unsub last ---
+A fires
+out-of-range count=3
+--- after out-of-range unsub ---
+A fires
+B fires
+C fires
