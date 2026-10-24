@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [Unreleased]
+
+### Added
+
+- **The fixtures pin the boundaries they used to skip.**
+  `tests/sqlite_repository_invalid_table.kai` now accepts a
+  one-character name, names built from the `a`/`z`/`A`/`Z`/`0`/`9`
+  range edges, and a name of exactly 64 characters, and rejects one
+  of 65. `tests/event_bus_unsubscribe.kai` removes the last handler
+  and checks that an out-of-range index leaves the bus unchanged.
+  `tests/validation_strings.kai` accepts a string whose length is
+  exactly the upper bound. Tests only; no library code changed.
+
+- **`tools/mutate-known-equivalent.txt`.** Lists the `kai mutate`
+  mutants that mean the same as the original, each with the reason:
+  the single-element match arms in `aggregate` and `event_bus` that
+  the general `[x, ...rest]` arm already covers, and two rewrites in
+  the SQLite table-name validator that accept and reject the same
+  names.
+
 ## [0.6.0] - 2026-10-24
 
 ### Added
