@@ -1,0 +1,6 @@
+commit: Ok
+after commit: alpha, beta
+statement fails: Backend(save failed: step failed: no such table: items [1])
+after rollback: alpha, beta
+domain rejects: Conflict(epsilon is reserved)
+after reject: alpha, beta

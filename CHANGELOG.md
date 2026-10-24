@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.6.0] - 2026-10-24
+
+### Added
+
+- **The Repository port lists and counts.** `Repository[a, i]` gains
+  `size() : Int` and `all() : [a]`, the two operations the value form
+  already had. The in-memory adapter answers from its map (`all` in
+  ascending key order); the SQLite one with `SELECT COUNT(*)` and
+  `SELECT data ... ORDER BY id`, skipping rows the codec cannot parse.
+
+- **`sqlite_repository.transaction(c, body)`.** Runs a `with_sqlite`
+  scope, or several over different tables, inside one
+  `BEGIN IMMEDIATE` ... `COMMIT`. `Ok` commits; `Err`, whether from a
+  statement that failed mid-body or from the body itself, rolls back
+  and comes back unchanged. New fixture
+  `tests/sqlite_repository_transaction.kai`.
+
+### Changed
+
+- **BREAKING: a hand-written `Repository` handler must cover `size`
+  and `all`.** kaikai requires a clause for every op of the effect.
+  `examples/repository_port`'s tracing adapter shows the two clauses.
+
+- **BREAKING: `sqlite_repository.size(c, table)` is removed.** Use
+  `Repository.size()` inside `with_sqlite`.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed

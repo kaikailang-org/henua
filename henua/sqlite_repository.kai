@@ -1,15 +1,16 @@
 # henua/sqlite_repository.kai — SQLite adapter for the Repository port.
 #
 # Imported by user code as `import henua.sqlite_repository`; the
-# installer is `sqlite_repository.with_sqlite(c, table, codec, body)`
-# and the codec type stays bare (`RepositoryCodec[a, i]`).
+# installer is `sqlite_repository.with_sqlite(c, table, codec, body)`,
+# `sqlite_repository.transaction(c, body)` makes a run atomic, and
+# the codec type stays bare (`RepositoryCodec[a, i]`).
 #
 # `with_sqlite` installs a handler for the `Repository[a, i]` effect
 # from `henua/repository_effect.kai`, backed by a table in a
 # cell-wrapped SQLite client (`kohau.sqlite.client`). The body talks
-# to `Repository.find` / `save` / `delete` exactly as it does under
-# `with_in_memory`, so swapping adapters touches only the
-# composition root.
+# to `Repository.find` / `save` / `delete` / `size` / `all` exactly
+# as it does under `with_in_memory`, so swapping adapters touches
+# only the composition root.
 #
 # ## Why a handler and not a repository value
 #
@@ -39,14 +40,21 @@
 # another when the data can contain pipes). The table is created on
 # entry if it does not exist.
 #
+# ## Transactions
+#
+# Outside a transaction every `save` / `delete` is its own statement.
+# `transaction(c, () => with_sqlite(c, ...))` runs the whole body in
+# one `BEGIN IMMEDIATE` ... `COMMIT`, and rolls everything back when
+# the run ends in `Err`. Several `with_sqlite` scopes over different
+# tables can share one transaction. Transactions do not nest.
+#
 # ## Limitations
 #
-# - No transactions: every `save` / `delete` is its own statement.
-#   Atomicity across operations is the caller's job
-#   (`client.exec(c, "BEGIN")` / `"COMMIT"`).
 # - The codec must round-trip (`from_row(to_row(x)) == Some(x)`); the
 #   adapter does not check it. A row the codec cannot parse reads as
-#   absent from `find`.
+#   absent: `find` returns `None` and `all` skips it, while `size`
+#   still counts it.
+# - `all` reads the whole table into memory.
 #
 # ## Stability
 #
@@ -191,7 +199,23 @@ fn run_on_table[a, i, r, e](c: Pid[SqlMsg], table: String, delim: String, codec:
       Ok(changed) -> resume(changed > 0)
     }
   }
+  size(resume) -> match client.query_scalar(c, "SELECT COUNT(*) FROM " ++ table, []) {
+    Err(err) -> Err(Backend("size failed: " ++ client.error_to_string(err)))
+    Ok(n) -> resume(n)
+  }
+  all(resume) -> match client.query_rows(c, "SELECT data FROM " ++ (table ++ " ORDER BY id"), []) {
+    Err(err) -> Err(Backend("all failed: " ++ client.error_to_string(err)))
+    Ok(rows) -> resume(decode_rows(rows, delim, codec))
+  }
   return(x) -> Ok(x)
+}
+
+fn decode_rows(rows: [[String]], delim: String, codec: RepositoryCodec[a, i]) : [a] = match rows {
+  [] -> []
+  [cols, ...rest] -> match codec.from_row(split_with(first_col(cols), delim)) {
+    Some(x) -> [x, ...decode_rows(rest, delim, codec)]
+    None -> decode_rows(rest, delim, codec)
+  }
 }
 
 # Extract the single `data` column from a one-column row. The cell
@@ -202,14 +226,33 @@ fn first_col(cols: [String]) : String = match cols {
   [x, ..._rest] -> x
 }
 
-# Number of rows in `table`, through `SELECT COUNT(*)`. Outside the
-# port: useful for fixture assertions, not for domain code.
+
+# Run `body` inside one SQLite transaction on `c`. `Ok` commits and
+# `Err` rolls every statement back, so wrapping a `with_sqlite` run
+# makes it all-or-nothing: a statement that fails mid-body, or a body
+# that ends by returning `Err`, leaves the tables as they were. The
+# body's error comes back unchanged; a `BEGIN` or `COMMIT` that fails
+# comes back as `Err(Backend(...))`.
+#
+# The transaction is `BEGIN IMMEDIATE`: it takes the write lock up
+# front, the mode a read-modify-write wants (see `kohau`'s `TxMode`).
+# kohau's `with_tx_mode` is not reused because it rolls back only on
+# its own error type, which would flatten the body's error to text.
 #[unstable]
-pub fn size(c: Pid[SqlMsg], table: String) : Result[Int, RepositoryError] / Actor[SqlMsg] = if not is_valid_table_name(table) {
-  Err(Backend("invalid table name: " ++ table))
-} else {
-  match client.query_scalar(c, "SELECT COUNT(*) FROM " ++ table, []) {
-    Ok(n) -> Ok(n)
-    Err(err) -> Err(Backend("size failed: " ++ client.error_to_string(err)))
+pub fn transaction[r, e](c: Pid[SqlMsg], body: () -> Result[r, RepositoryError] / Actor[SqlMsg] + e) : Result[r, RepositoryError] / Actor[SqlMsg] + e = match client.exec(c, "BEGIN IMMEDIATE", []) {
+  Err(err) -> Err(Backend("BEGIN failed: " ++ client.error_to_string(err)))
+  Ok(_) -> match body() {
+    Ok(x) -> match client.exec(c, "COMMIT", []) {
+      Ok(_) -> Ok(x)
+      Err(err) -> {
+        let _ = client.exec(c, "ROLLBACK", [])
+        Err(Backend("COMMIT failed: " ++ client.error_to_string(err)))
+      }
+    }
+    Err(err) -> {
+      # A failed ROLLBACK must not mask the body's own error.
+      let _ = client.exec(c, "ROLLBACK", [])
+      Err(err)
+    }
   }
 }

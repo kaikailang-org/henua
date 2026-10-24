@@ -69,6 +69,14 @@ fn with_tracing[r, e](body: () -> r / Repository[Account, String] + e) : r / Std
       store.set(map.remove(store, key))
       resume(present)
     }
+    size(resume) -> {
+      Stdout.print("  [sql] SELECT COUNT(*) FROM accounts")
+      resume(map.size(store))
+    }
+    all(resume) -> {
+      Stdout.print("  [sql] SELECT * FROM accounts")
+      resume(map.values(store))
+    }
     return(x) -> x
   }
 }

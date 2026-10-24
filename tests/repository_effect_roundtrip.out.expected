@@ -1,6 +1,9 @@
+size after 2 saves: 2
+all: alice, bob
 find 1: alice age=30
 find 1 after replace: alice age=31
 delete 2 (present): True
 delete 2 (absent):  False
 find 2 after delete: None
+size after delete: 1
 seeded find 7: carol

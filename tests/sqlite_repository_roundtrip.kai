@@ -4,9 +4,10 @@
 #
 # Coverage:
 #   - with_sqlite creates the table and installs the handler
-#   - save, then size==1 and find returns the entity
+#   - save, then size()==1 and find returns the entity
 #   - save twice on the same id replaces (size still 1)
-#   - delete returns True, then find returns None and size==0
+#   - all() lists the stored entities in id order
+#   - delete returns True, then find returns None and one entity is left
 #   - the body's result comes back as Ok
 #   - client.close: the cell closes the connection
 #
@@ -60,28 +61,34 @@ fn print_find(label: String, id: Int) : Unit / Repository[Todo, Int] + Stdout = 
   None -> Stdout.print(label ++ " None")
 }
 
-fn print_size(c: Pid[SqlMsg], label: String) : Unit / Stdout + Actor[SqlMsg] = match sqlite_repository.size(c, "todos") {
-  Ok(n) -> Stdout.print(label ++ (" size=" ++ int_to_string(n)))
-  Err(e) -> Stdout.print(label ++ (" size err=" ++ repository.repository_error_to_string(e)))
+fn print_size(label: String) : Unit / Repository[Todo, Int] + Stdout = Stdout.print(label ++ (" size=" ++ int_to_string(Repository.size())))
+
+fn titles(ts: [Todo]) : String = match ts {
+  [] -> ""
+  [t] -> t.title
+  [t, ...rest] -> t.title ++ (", " ++ titles(rest))
 }
 
-fn scenario(c: Pid[SqlMsg]) : Int / Repository[Todo, Int] + Stdout + Actor[SqlMsg] {
-  print_size(c, "empty")
+fn scenario() : Int / Repository[Todo, Int] + Stdout {
+  print_size("empty")
   Repository.save(1, Todo { title: "buy milk", done: false })
-  print_size(c, "after save 1")
+  print_size("after save 1")
   print_find("find 1:", 1)
   Repository.save(1, Todo { title: "buy milk", done: true })
-  print_size(c, "after replace")
+  print_size("after replace")
   print_find("find 1 after replace:", 1)
+  Repository.save(2, Todo { title: "walk dog", done: false })
+  Stdout.print("all: " ++ titles(Repository.all()))
   Stdout.print("delete 1: " ++ bool_to_string(Repository.delete(1)))
-  print_size(c, "after delete")
+  print_size("after delete")
   print_find("find 1 after delete:", 1)
+  Stdout.print("all: " ++ titles(Repository.all()))
   42
 }
 
 fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
   let codec = RepositoryCodec { to_row: todo_to_row, from_row: todo_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
-  match sqlite_repository.with_sqlite(c, "todos", codec, () => scenario(c)) {
+  match sqlite_repository.with_sqlite(c, "todos", codec, scenario) {
     Ok(n) -> Stdout.print("result: Ok(" ++ (int_to_string(n) ++ ")"))
     Err(e) -> Stdout.print("result: " ++ repository.repository_error_to_string(e))
   }

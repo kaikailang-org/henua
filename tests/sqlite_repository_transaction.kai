@@ -1,0 +1,92 @@
+# tests/sqlite_repository_transaction.kai — `transaction` makes a
+# `with_sqlite` run all-or-nothing.
+#
+# Coverage:
+#   - a run that completes commits every save
+#   - a statement failing mid-body rolls back the saves before it
+#     (the body drops the table, so the next save fails; SQLite
+#     rolls the DROP back too)
+#   - a body that ends in `Err(Conflict(...))` rolls back, and the
+#     error comes back unchanged
+#   - the table's entities after each case, read in a fresh scope
+
+import actor
+
+import henua.repository
+
+import henua.repository_effect
+
+import henua.sqlite_repository
+
+import kohau.sqlite.client
+
+fn s_to_row(s: String) : [String] = [s]
+
+fn s_from_row(r: [String]) : Option[String] = match r {
+  [x] -> Some(x)
+  _ -> None
+}
+
+fn id_to_str(i: Int) : String = int_to_string(i)
+
+fn id_from_str(s: String) : Option[Int] = string_to_int(s)
+
+fn codec() : RepositoryCodec[String, Int] = RepositoryCodec { to_row: s_to_row, from_row: s_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
+
+fn joined(xs: [String]) : String = match xs {
+  [] -> "(none)"
+  [x] -> x
+  [x, ...rest] -> x ++ (", " ++ joined(rest))
+}
+
+fn report(c: Pid[SqlMsg], label: String) : Unit / Stdout + Actor[SqlMsg] {
+  let r = sqlite_repository.with_sqlite(c, "items", codec(), () => joined(Repository.all()))
+  match r {
+    Ok(items) -> Stdout.print(label ++ (": " ++ items))
+    Err(e) -> Stdout.print(label ++ (": " ++ repository.repository_error_to_string(e)))
+  }
+}
+
+fn show(label: String, r: Result[Unit, RepositoryError]) : Unit / Stdout = match r {
+  Ok(_) -> Stdout.print(label ++ ": Ok")
+  Err(e) -> Stdout.print(label ++ (": " ++ repository.repository_error_to_string(e)))
+}
+
+fn save_two() : Unit / Repository[String, Int] {
+  Repository.save(1, "alpha")
+  Repository.save(2, "beta")
+}
+
+fn save_then_fail(c: Pid[SqlMsg]) : Unit / Repository[String, Int] + Actor[SqlMsg] {
+  Repository.save(3, "gamma")
+  let _ = client.exec(c, "DROP TABLE items", [])
+  Repository.save(4, "delta")
+}
+
+# A domain rule rejects the run after it already saved.
+fn save_then_reject() : Result[Unit, RepositoryError] / Repository[String, Int] {
+  Repository.save(5, "epsilon")
+  Err(Conflict("epsilon is reserved"))
+}
+
+fn flatten(r: Result[Result[Unit, RepositoryError], RepositoryError]) : Result[Unit, RepositoryError] = match r {
+  Ok(inner) -> inner
+  Err(e) -> Err(e)
+}
+
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+  show("commit", sqlite_repository.transaction(c, () => sqlite_repository.with_sqlite(c, "items", codec(), save_two)))
+  report(c, "after commit")
+  show("statement fails", sqlite_repository.transaction(c, () => sqlite_repository.with_sqlite(c, "items", codec(), () => save_then_fail(c))))
+  report(c, "after rollback")
+  show("domain rejects", sqlite_repository.transaction(c, () => flatten(sqlite_repository.with_sqlite(c, "items", codec(), save_then_reject))))
+  report(c, "after reject")
+  client.close(c)
+}
+
+fn main() : Int / Spawn + Ffi + Console {
+  with_mailbox(() => {
+    client.with_client(":memory:", body)
+  })
+  0
+}

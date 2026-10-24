@@ -3,7 +3,9 @@ after save 1 size=1
 find 1: buy milk done=false
 after replace size=1
 find 1 after replace: buy milk done=true
+all: buy milk, walk dog
 delete 1: true
-after delete size=0
+after delete size=1
 find 1 after delete: None
+all: walk dog
 result: Ok(42)

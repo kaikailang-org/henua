@@ -91,6 +91,10 @@ import henua.repository
 #                     value form's `Err(NotFound)` for delete-of-ghost,
 #                     surfaced here as `False` rather than an error so
 #                     the common "tolerant delete" path needs no match).
+#   - `size()`      : the number of stored entities.
+#   - `all()`       : every stored entity. The order is the adapter's:
+#                     ascending key for the in-memory one, ascending id
+#                     text for SQLite.
 #
 # The id type `i` must be usable as a `Map` key for the in-memory
 # adapter (`Int`, `Real`, `Char`, `String` today — see
@@ -99,6 +103,8 @@ pub effect Repository[a, i] {
   find(key: i) : Option[a]
   save(key: i, entity: a) : Unit
   delete(key: i) : Bool
+  size() : Int
+  all() : [a]
 }
 
 # ---- The in-memory adapter -----------------------------------------
@@ -150,6 +156,8 @@ fn run_with_store[a, i, r, e](initial: Map[i, a], body: () -> r / Repository[a, 
       store.set(map.remove(store, key))
       resume(present)
     }
+    size(resume) -> resume(map.size(store))
+    all(resume) -> resume(map.values(store))
     return(x) -> x
   }
 }

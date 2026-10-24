@@ -3,7 +3,7 @@
 Living document for the DDD building-block package that runs on
 top of kaikai and underneath manutara and hopu.
 
-> **Status:** 0.5.0. Repository, Aggregate, Domain Event,
+> **Status:** 0.6.0. Repository, Aggregate, Domain Event,
 > EventBus, Validation, and Bounded Context conventions are in
 > place with pure, in-memory reference implementations. The
 > Repository ships in two complementary forms — the value form
@@ -148,14 +148,14 @@ henua exposes eight modules under `henua/`:
 │   Repository convention + InMemoryRepository[a, i] adapter   │
 │   (value form) save / find / delete / size / all             │
 ├──────────────────────────────────────────────────────────────┤
-│ henua.repository_effect                                     │
+│ henua.repository_effect                                      │
 │   Repository[a, i] effect (the port) + in-memory adapter     │
-│   (effect form) Repository.find / .save / .delete            │
+│   (effect form) Repository.find / save / delete / size / all │
 │   with_in_memory / with_in_memory_seeded                     │
 ├──────────────────────────────────────────────────────────────┤
 │ henua.sqlite_repository                                      │
 │   SQLite adapter for the port, via kohau                     │
-│   with_sqlite / with_sqlite_delim / size                     │
+│   with_sqlite / with_sqlite_delim / transaction              │
 ├──────────────────────────────────────────────────────────────┤
 │ henua.event_bus                                              │
 │   EventBus convention + InMemoryEventBus[ev, e] adapter      │
@@ -214,12 +214,13 @@ not in the Repository.
 The same Repository pattern as a **port** — the parametric effect
 `Repository[a, i]` — rather than a value. A domain function
 declares `/ Repository[a, i]` in its row and calls
-`Repository.find / .save / .delete`; it cannot name a concrete
+`Repository.find / save / delete / size / all`; it cannot name a concrete
 repository type. The adapter is the enclosing handler, installed
 at the composition root:
 
 - **`Repository[a, i]`** is the effect (the port): `find(key) :
-  Option[a]`, `save(key, entity) : Unit`, `delete(key) : Bool`.
+  Option[a]`, `save(key, entity) : Unit`, `delete(key) : Bool`,
+  `size() : Int`, `all() : [a]`. `all`'s order is the adapter's.
 - **`with_in_memory(body)`** installs an in-memory adapter — a
   handler-local `Map[i, a]` cell threaded through the same
   `map.*` logic the value form uses (reused, not reimplemented).
@@ -570,7 +571,7 @@ versions of the open ones are the planned order, not a promise.
 - [x] **0.3.0** — Sources on `Result[Ok, Error]` (kaikai 0.104)
 - [x] **0.4.0** — kohau's sqlite shim through `[native]`; tier1 CI
 - [x] **0.5.0** — SQLite adapter as a handler of the Repository port (kaikai 0.174)
-- [ ] **0.6.0** — Complete the port: `all` and `size` ops, transactions in the SQLite adapter
+- [x] **0.6.0** — Complete the port: `all` and `size` ops, transactions in the SQLite adapter
 - [ ] **0.7.0** — Postgres adapter over `kohau.postgres.client`
 - [ ] **0.8.0** — EventBus on ahu: a cell-wrapped, fault-isolated bus
 - [ ] **0.9.0** — Serialised aggregate: one aggregate updated from many fibers
@@ -582,10 +583,11 @@ versions of the open ones are the planned order, not a promise.
 
 ### Milestone notes
 
-- **Port completion (0.6.0).** The value form already has `size`
-  and `all`; the effect does not. kohau's client now ships
-  `query_rows`, cursors and `with_tx`, which the SQLite adapter
-  needs for `all` and for atomic multi-statement work.
+- **Port completion (0.6.0).** The effect gained the value form's
+  `size` and `all`. `sqlite_repository.transaction(c, body)` makes a
+  run all-or-nothing; it commits on `Ok`, rolls back on `Err`, and
+  hands the body's error back unchanged. Savepoint-based nesting is
+  left until a use case needs it.
 - **Postgres (0.7.0).** Same shape as `with_sqlite`: the client
   pid enters as a parameter and stays inside the handler.
 - **EventBus on ahu (0.8.0).** The README's principle — persistence
