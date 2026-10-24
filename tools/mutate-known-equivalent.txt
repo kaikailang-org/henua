@@ -1,0 +1,14 @@
+# Mutants that mean exactly what the original means, and so can never
+# be killed. Keyed <file>:<line>:<operator>; the reason is mandatory.
+
+henua/aggregate.kai:65:arm  # fold_events: dropping the `[ev1]` arm sends a one-event list to `[ev1, ...rest]` with rest = [], which steps once and returns through the `[]` arm. Same state, same effects, same order.
+
+henua/event_bus.kai:76:arm  # append_handler: without the `[x]` arm a one-handler list takes `[x, ...rest]` with rest = [], giving [x, ...append_handler([], h)] = [x, h], the same list.
+
+henua/event_bus.kai:94:arm  # publish_loop: without the `[h]` arm a one-handler list takes `[h, ...rest]`, runs h(event) and then publish_loop([], event) = (). Same handler calls, same result.
+
+henua/event_bus.kai:118:arm  # remove_at: without the `[x]` arm a one-element list takes `[x, ...rest]` with rest = [], which yields rest = [] on a match and [x, ...remove_at([], ...)] = [x] otherwise, exactly what the dropped arm returns.
+
+henua/sqlite_repository.kai:106:literal  # is_valid_table_name: `n < 1` -> `n < 0`. The only length the change lets through is 0, and then string_slice(s, 0, 1) is "", which is_id_head rejects (not a letter, not "_"), so the empty name is still invalid.
+
+henua/sqlite_repository.kai:111:literal  # is_valid_table_name: is_id_tail_from(s, 1, n) -> (s, 0, n) re-checks the first character with the tail predicate. Every head character (letter or "_") also passes the tail predicate, and a bad head already fails the `and`, so the result is the same for every string. The key also skips the two string_slice(s, 0, 1) literals on this line, which the fixtures do kill; move the tail call to its own line if they must be measured.
