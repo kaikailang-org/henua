@@ -13,6 +13,7 @@ fn main() : Int / Stdout {
   report("len 3..5 of \"\"", validation.string_length_between("", 3, 5))
   report("len 3..5 of \"hi\"", validation.string_length_between("hi", 3, 5))
   report("len 3..5 of \"hey\"", validation.string_length_between("hey", 3, 5))
+  report("len 3..5 of \"hello\"", validation.string_length_between("hello", 3, 5))
   report("len 3..5 of \"hello!\"", validation.string_length_between("hello!", 3, 5))
   # Chained validation: first non-empty, then length-bounded.
   let composed = validation.and_then(validation.non_empty_string("ok"), s => validation.string_length_between(s, 3, 8))
