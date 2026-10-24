@@ -6,7 +6,7 @@
 #
 # The Repository pattern, in DDD terms, is the abstraction that
 # mediates between the domain model and the data mapping layer. In
-# henua v1 the abstraction is **convention-based, not protocol-based**:
+# henua the abstraction is **convention-based, not protocol-based**:
 # every Repository implementation provides the same shape of
 # functions (`save`, `find`, `delete`) over its concrete type. The
 # kaikai protocol system is single-dispatch on `Self` and disallows

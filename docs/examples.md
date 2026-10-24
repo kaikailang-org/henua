@@ -1,6 +1,6 @@
 # henua examples
 
-Two end-to-end programs that exercise the v0.1 surface. Each one
+End-to-end programs that exercise henua's surface. Each one
 lives under `examples/<name>/main.kai` and is built with `kai
 build examples/<name>/main.kai -o build/<name>` from the package
 root.
@@ -120,19 +120,20 @@ diffing each binary's stdout against its `.out.expected` golden.
 
 - **Cross-context interactions.** Both examples are single
   bounded context. Integration events and cross-context buses
-  are v0.2 work (`docs/design.md` §*Roadmap v0.2*).
+  are on the roadmap (`docs/design.md` §*Roadmap*).
 - **Event sourcing.** The ledger example persists the
   *aggregate*, not the *event stream*. The aggregate is rebuilt
   on every save via `aggregate.apply_event`; the events are
   emitted on the bus and otherwise discarded. An
-  event-sourcing example will land alongside the v0.2
-  persistent-stream module.
+  event-sourcing example will land alongside the
+  persistent-stream milestone.
 - **Concurrent updates.** Both examples run sequentially. When
   multiple fibers update the same aggregate, the consumer
   needs to serialise — typically by wrapping the aggregate in
   an `ahu.cell`. See `docs/design.md` §*External dependencies on
   kaikai* watch items.
-- **Database-backed repositories.** The in-memory adapter is
-  the only one shipped in v0.1. `kohau`-backed Postgres /
-  SQLite adapters live in `henua/postgres_repository.kai` and
-  `henua/sqlite_repository.kai` once `kohau` is available.
+- **Database-backed repositories.** The examples use the
+  in-memory adapters. The SQLite adapter
+  (`henua/sqlite_repository.kai`) is exercised by the
+  `tests/sqlite_repository_*` fixtures; Postgres is on the
+  roadmap.

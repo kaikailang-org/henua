@@ -24,7 +24,7 @@
 # arms it does not care about. Cross-context flow goes through an
 # *integration event* (a separately-typed, persisted message) —
 # not by sharing the domain-event type. Integration events are
-# out of v1 scope; see `docs/design.md` §*Roadmap v0.2*.
+# not shipped; see `docs/design.md` §*Roadmap*.
 #
 # Why past tense, not `did_X` or `X_happened`: idiomatic DDD
 # convention from Evans/Vernon; preserves the "this is a fact"
@@ -33,22 +33,20 @@
 # Why no `protocol DomainEvent`: every concrete event carries
 # different payload types; the only thing all events share is
 # `EventMeta` (timestamp + id), and that is composable as a
-# wrapper record rather than as a protocol method. Future
-# work (event sourcing in v0.2) may revisit this if a unified
+# wrapper record rather than as a protocol method, until a unified
 # serialization protocol becomes load-bearing.
 #
 # Spec: `docs/design.md` §*Domain events*.
 
-# Metadata that wraps any persisted event. v1 keeps this small —
-# event-sourcing setups in v0.2 will extend it with stream id,
-# version, and causation/correlation ids. For v1 use, the
-# `EventEnvelope[ev]` shape lets callers attach metadata without
+# Metadata that wraps any persisted event, kept small: event
+# sourcing would extend it with stream id, version, and
+# causation/correlation ids. The `EventEnvelope[ev]` shape lets callers attach metadata without
 # polluting their domain event's sum type.
 #
 # `id` is a monotonic local counter (the caller's responsibility);
 # `at_unix_ms` is a millisecond Unix timestamp the caller obtains
 # from a `Clock` effect. henua does not call `Clock` itself
-# because v1 keeps the surface pure — any module that wanted to
+# because the surface stays pure — any module that wanted to
 # `time.now()` would acquire a `Clock` effect row, and that would
 # bleed into every consumer of the helper.
 pub type EventMeta = { id: Int, at_unix_ms: Int }

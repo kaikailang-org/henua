@@ -19,7 +19,7 @@
 # makes every transition explicit in the source.
 #
 # henua deliberately does **not** ship a `protocol Aggregate { ... }`
-# in v1, for two reasons:
+# for two reasons:
 #
 #   1. kaikai protocols are pure (`kaikai/docs/protocols.md` §*With
 #      effects*) and single-dispatch on `Self`. An aggregate's
@@ -32,7 +32,7 @@
 #      only one of the common shapes. Some aggregates have natural
 #      ids (`AccountId`, `OrderId`); some are uniquely identified
 #      by a tuple of fields; some have a version field for
-#      optimistic concurrency. A v1 protocol would constrain those
+#      optimistic concurrency. A protocol would constrain those
 #      shapes prematurely.
 #
 # The convention every aggregate follows:
@@ -47,13 +47,12 @@
 #
 # Helper functions in this module support the apply-fold pattern:
 # `fold_events` replays a list of events against an initial state,
-# which is the v1 building block for any future event-sourcing
-# support.
+# which is the building block for event sourcing.
 #
 # Spec: `docs/design.md` §*Aggregate*.
 
 # Replay a sequence of events against an initial state by folding
-# the step function over them. This is the v1 building block for
+# the step function over them. This is the building block for
 # both immediate event application (single event) and replay
 # (rebuild state from a recorded event stream).
 #

@@ -69,10 +69,9 @@
 #     lives in a third module (`integration/`) that depends on
 #     both contexts but is depended on by neither.
 #
-# v1 does not ship an `IntegrationEvent` type or a typed bus
+# henua does not ship an `IntegrationEvent` type or a typed bus
 # router; the convention above is enough until usage data shows
-# the absence is load-bearing. The v0.2 roadmap revisits this
-# alongside event-sourcing primitives.
+# the absence is load-bearing (`docs/design.md` §*Roadmap*).
 #
 # # Spec
 #

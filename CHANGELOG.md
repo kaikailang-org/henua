@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
-## [Unreleased]
+## [0.5.0] - 2026-10-24
 
 ### Changed
 
@@ -32,6 +32,10 @@ the surface is pre-1.0 (every release may break shape).
 
 - **`tests/sqlite_repository_backend_error.kai`**: a statement that
   fails mid-body aborts it and surfaces as `Err(Backend(...))`.
+
+- **A roadmap with one milestone per release** in `docs/design.md`.
+  The design's "v0.1" / "v0.2" phase labels, which never matched the
+  package versions, give way to release numbers.
 
 ### Fixed
 

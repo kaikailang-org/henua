@@ -7,16 +7,15 @@
 # An event bus is the asynchronous side of the domain. While a
 # Repository commits state changes synchronously, a bus broadcasts
 # the *events* those changes produced to interested subscribers.
-# In henua v1 the bus is **in-process and synchronous**: a call to
+# The bus is **in-process and synchronous**: a call to
 # `publish(bus, event)` invokes every registered handler in order
 # of registration before returning. There is no queue, no retry,
 # no cross-process delivery.
 #
-# This shape covers every v1 use case (in-process domain reactions,
-# audit trails written via a `Log` effect, test assertions). The
-# v0.2 roadmap covers asynchronous and cross-process variants
-# (persistent queues via `hopu`, message brokers, etc.) — see
-# `docs/design.md` §*Roadmap v0.2*.
+# This shape covers in-process domain reactions, audit trails
+# written via a `Log` effect, and test assertions. Asynchronous and
+# cross-process variants (persistent queues via `hopu`, message
+# brokers) are sketched in `docs/design.md` §*Roadmap*.
 #
 # Why no `protocol EventBus`: handlers carry user-chosen effect
 # rows (a logging handler wants `/ Log`; an audit handler wants
@@ -48,7 +47,7 @@ pub type Handler[ev, e] = (ev) -> Unit / e
 # the extra effects before wrapping the function as a handler).
 #
 # `handlers` is `[Handler[ev, e]]` rather than a `Map` because
-# v1 has no need to look up a specific handler — every publish
+# nothing looks up a specific handler — every publish
 # walks the whole list. Removing a handler is an explicit lane
 # (`unsubscribe`) that takes the index returned by `subscribe`.
 pub type InMemoryEventBus[ev, e] = { handlers: [Handler[ev, e]] }
@@ -86,9 +85,8 @@ fn append_handler(xs: [Handler[ev, e]], h: Handler[ev, e]) : [Handler[ev, e]] = 
 # raised by a handler are not caught (handlers that need
 # fault-isolation should wrap their own body in a `handle`
 # block); a panic from one handler aborts the publish and
-# subsequent handlers do not run. v1's posture is "trust the
-# handler set"; in v0.2 an explicit fault-isolated bus variant
-# may ship.
+# subsequent handlers do not run. The posture is "trust the
+# handler set".
 pub fn publish(bus: InMemoryEventBus[ev, e], event: ev) : Unit / e = publish_loop(bus.handlers, event)
 
 fn publish_loop[ev, e](handlers: [Handler[ev, e]], event: ev) : Unit / e = match handlers {
@@ -111,7 +109,7 @@ pub fn subscriber_count(bus: InMemoryEventBus[ev, e]) : Int = list.length(bus.ha
 # Index instability after `unsubscribe`: this is the same
 # trade-off `subscribe` accepts when it returns the count.
 # Callers who need stable identifiers across removals should
-# track their own subscription id externally; v1 keeps the bus
+# track their own subscription id externally; the bus stays
 # minimal.
 pub fn unsubscribe(bus: InMemoryEventBus[ev, e], index: Int) : InMemoryEventBus[ev, e] = InMemoryEventBus { handlers: remove_at(bus.handlers, index, 0) }
 
