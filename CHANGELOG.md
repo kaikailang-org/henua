@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.6.2] - 2026-11-19
+
+### Fixed
+
+- **henua builds on kaikai 0.192 and later.** The pinned ahu v0.2.1
+  and kohau v0.5.0 no longer built on the current compiler; henua now
+  pins ahu v0.3.0 and kohau v0.5.2. henua's own code is unchanged.
+  Verified on kaikai 0.195.0 and 0.196.3.
+
 ## [0.6.1] - 2026-10-24
 
 ### Added
