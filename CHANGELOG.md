@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.6.3] - 2026-11-22
+
+### Fixed
+
+- **A henua consumer that does not use the SQLite repository links no
+  SQLite.** henua now pins kohau v0.5.3, which links `libsqlite3` only
+  into builds that import `kohau.sqlite`; with v0.5.2 every program
+  depending on henua linked it. henua's own code is unchanged.
+
 ## [0.6.2] - 2026-11-19
 
 ### Fixed
