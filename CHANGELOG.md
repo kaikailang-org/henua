@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project versions track Semantic Versioning loosely while
 the surface is pre-1.0 (every release may break shape).
 
+## [0.7.0] - 2026-11-25
+
+### Changed
+
+- **The SQLite repository runs in `Spawn`.** henua now pins kohau
+  v0.6.0, whose client takes each reply on a fiber of its own instead
+  of the caller's mailbox. `with_sqlite`, `with_sqlite_delim` and
+  `transaction` follow: their rows carry `Spawn` where they carried
+  `Actor[SqlMsg]`, and `transaction`'s body is `Spawn + e`. A caller
+  no longer wraps them in `with_mailbox`, and an actor whose mailbox
+  takes its own message type can now use the repository.
+
+  Migrating: write `Spawn` where a signature said `Actor[SqlMsg]`, and
+  drop the `with_mailbox` around the client calls.
+
 ## [0.6.3] - 2026-11-22
 
 ### Fixed
