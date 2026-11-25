@@ -58,7 +58,7 @@
 #
 #   `with_in_memory`         — this file. Pure Map-backed, handler-local.
 #   `with_sqlite`            — `henua/sqlite_repository.kai`. kohau-backed,
-#                              runs in `Actor[SqlMsg]`; a failed statement
+#                              runs in `Spawn`; a failed statement
 #                              aborts the body as `Err(Backend(...))`.
 #   `with_postgres`(future)  — kohau-backed, native wire protocol.
 #

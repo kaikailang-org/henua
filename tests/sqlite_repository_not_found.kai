@@ -3,9 +3,7 @@
 # Mirrors the in-memory adapter's behaviour in
 # `repository_effect_roundtrip.kai`, through the cell-wrapped client.
 #
-# The body runs in `Actor[SqlMsg]` — no `Ffi`.
-
-import actor
+# The body runs in `Spawn` — no `Ffi`, no mailbox.
 
 import henua.repository
 
@@ -47,7 +45,7 @@ fn scenario() : Unit / Repository[String, Int] + Stdout {
   }
 }
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Spawn {
   let codec = RepositoryCodec { to_row: s_to_row, from_row: s_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
   match sqlite_repository.with_sqlite(c, "items", codec, scenario) {
     Ok(_) -> ()
@@ -57,8 +55,6 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
 }
 
 fn main() : Int / Spawn + Ffi + Console {
-  with_mailbox(() => {
-    client.with_client(":memory:", body)
-  })
+  client.with_client(":memory:", body)
   0
 }

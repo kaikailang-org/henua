@@ -16,8 +16,6 @@
 #
 # Trace is deterministic: `:memory:` is fresh per run; no timestamps.
 
-import actor
-
 import henua.repository
 
 import henua.repository_effect
@@ -86,7 +84,7 @@ fn scenario() : Int / Repository[Todo, Int] + Stdout {
   42
 }
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Spawn {
   let codec = RepositoryCodec { to_row: todo_to_row, from_row: todo_from_row, id_to_string: id_to_str, id_from_string: id_from_str }
   match sqlite_repository.with_sqlite(c, "todos", codec, scenario) {
     Ok(n) -> Stdout.print("result: Ok(" ++ (int_to_string(n) ++ ")"))
@@ -96,8 +94,6 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
 }
 
 fn main() : Int / Spawn + Ffi + Console {
-  with_mailbox(() => {
-    client.with_client(":memory:", body)
-  })
+  client.with_client(":memory:", body)
   0
 }
