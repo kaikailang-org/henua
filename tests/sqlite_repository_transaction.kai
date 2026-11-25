@@ -10,8 +10,6 @@
 #     error comes back unchanged
 #   - the table's entities after each case, read in a fresh scope
 
-import actor
-
 import henua.repository
 
 import henua.repository_effect
@@ -39,7 +37,7 @@ fn joined(xs: [String]) : String = match xs {
   [x, ...rest] -> x ++ (", " ++ joined(rest))
 }
 
-fn report(c: Pid[SqlMsg], label: String) : Unit / Stdout + Actor[SqlMsg] {
+fn report(c: Pid[SqlMsg], label: String) : Unit / Stdout + Spawn {
   let r = sqlite_repository.with_sqlite(c, "items", codec(), () => joined(Repository.all()))
   match r {
     Ok(items) -> Stdout.print(label ++ (": " ++ items))
@@ -57,7 +55,7 @@ fn save_two() : Unit / Repository[String, Int] {
   Repository.save(2, "beta")
 }
 
-fn save_then_fail(c: Pid[SqlMsg]) : Unit / Repository[String, Int] + Actor[SqlMsg] {
+fn save_then_fail(c: Pid[SqlMsg]) : Unit / Repository[String, Int] + Spawn {
   Repository.save(3, "gamma")
   let _ = client.exec(c, "DROP TABLE items", [])
   Repository.save(4, "delta")
@@ -74,7 +72,7 @@ fn flatten(r: Result[Result[Unit, RepositoryError], RepositoryError]) : Result[U
   Err(e) -> Err(e)
 }
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Spawn {
   show("commit", sqlite_repository.transaction(c, () => sqlite_repository.with_sqlite(c, "items", codec(), save_two)))
   report(c, "after commit")
   show("statement fails", sqlite_repository.transaction(c, () => sqlite_repository.with_sqlite(c, "items", codec(), () => save_then_fail(c))))
@@ -85,8 +83,6 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
 }
 
 fn main() : Int / Spawn + Ffi + Console {
-  with_mailbox(() => {
-    client.with_client(":memory:", body)
-  })
+  client.with_client(":memory:", body)
   0
 }

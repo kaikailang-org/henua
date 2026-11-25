@@ -10,12 +10,10 @@
 # cases round-trip through DDL.
 #
 # Runs through the cell-wrapped client — the body is in
-# `Actor[SqlMsg]`, no `Ffi`. The table-name validation is
+# `Spawn`, no `Ffi`. The table-name validation is
 # caller-side (no SQLite round-trip needed for the rejections), but
 # the acceptance cases issue real DDL through the cell. A rejected
 # name never runs the body.
-
-import actor
 
 import henua.repository
 
@@ -47,7 +45,7 @@ fn string_repeat(s: String, n: Int) : String = if n <= 0 {
   s ++ string_repeat(s, n - 1)
 }
 
-fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor[SqlMsg] {
+fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Spawn {
   let codec = RepositoryCodec { to_row: to_row, from_row: from_row, id_to_string: id_to_str, id_from_string: id_from_str }
   let r: Result[Unit, RepositoryError] = sqlite_repository.with_sqlite(c, name, codec, () => Repository.save(1, Dummy { x: 1 }))
   match r {
@@ -56,7 +54,7 @@ fn try_make(c: Pid[SqlMsg], label: String, name: String) : Unit / Stdout + Actor
   }
 }
 
-fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
+fn body(c: Pid[SqlMsg]) : Unit / Stdout + Spawn {
   # Acceptance cases — must round-trip.
   try_make(c, "plain", "todos")
   try_make(c, "snake", "user_sessions_v2")
@@ -79,8 +77,6 @@ fn body(c: Pid[SqlMsg]) : Unit / Stdout + Actor[SqlMsg] {
 }
 
 fn main() : Int / Spawn + Ffi + Console {
-  with_mailbox(() => {
-    client.with_client(":memory:", body)
-  })
+  client.with_client(":memory:", body)
   0
 }

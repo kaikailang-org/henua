@@ -19,7 +19,8 @@
 # function that returns a pid held in a record field. A repository
 # value carrying the pid could not be built or threaded, so the pid
 # enters as a parameter and stays inside the handler. The row is
-# `Actor[SqlMsg]`, never `Ffi`: the cell owns the FFI boundary.
+# `Spawn`, never `Ffi`: the cell owns the FFI boundary, and the caller
+# needs no mailbox of its own.
 #
 # ## Errors
 #
@@ -149,17 +150,17 @@ fn split_with(s: String, sep: String) : [String] = string_split(s, sep)
 # when the table name is invalid, the table cannot be created, or a
 # statement fails mid-body (the body does not resume).
 #[unstable]
-pub fn with_sqlite[a, i, r, e](c: Pid[SqlMsg], table: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Actor[SqlMsg] + e = with_sqlite_delim(c, table, "|", codec, body)
+pub fn with_sqlite[a, i, r, e](c: Pid[SqlMsg], table: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Spawn + e = with_sqlite_delim(c, table, "|", codec, body)
 
 # `with_sqlite` with a custom delimiter for the `data` column, for a
 # codec whose strings can contain pipes.
 #[unstable]
-pub fn with_sqlite_delim[a, i, r, e](c: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Actor[SqlMsg] + e = match create_table(c, table) {
+pub fn with_sqlite_delim[a, i, r, e](c: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Spawn + e = match create_table(c, table) {
   Err(err) -> Err(err)
   Ok(_) -> run_on_table(c, table, delim, codec, body)
 }
 
-fn create_table(c: Pid[SqlMsg], table: String) : Result[Unit, RepositoryError] / Actor[SqlMsg] = if not is_valid_table_name(table) {
+fn create_table(c: Pid[SqlMsg], table: String) : Result[Unit, RepositoryError] / Spawn = if not is_valid_table_name(table) {
   Err(Backend("invalid table name: " ++ table))
 } else {
   let sql = "CREATE TABLE IF NOT EXISTS " ++ (table ++ " (id TEXT PRIMARY KEY, data TEXT NOT NULL)")
@@ -171,7 +172,7 @@ fn create_table(c: Pid[SqlMsg], table: String) : Result[Unit, RepositoryError] /
 
 # Values are bound positionally; only the validated table name is
 # concatenated into the SQL.
-fn run_on_table[a, i, r, e](c: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Actor[SqlMsg] + e = handle {
+fn run_on_table[a, i, r, e](c: Pid[SqlMsg], table: String, delim: String, codec: RepositoryCodec[a, i], body: () -> r / Repository[a, i] + e) : Result[r, RepositoryError] / Spawn + e = handle {
   body()
 } with Repository[a, i] {
   find(key, resume) -> {
@@ -239,7 +240,7 @@ fn first_col(cols: [String]) : String = match cols {
 # kohau's `with_tx_mode` is not reused because it rolls back only on
 # its own error type, which would flatten the body's error to text.
 #[unstable]
-pub fn transaction[r, e](c: Pid[SqlMsg], body: () -> Result[r, RepositoryError] / Actor[SqlMsg] + e) : Result[r, RepositoryError] / Actor[SqlMsg] + e = match client.exec(c, "BEGIN IMMEDIATE", []) {
+pub fn transaction[r, e](c: Pid[SqlMsg], body: () -> Result[r, RepositoryError] / Spawn + e) : Result[r, RepositoryError] / Spawn + e = match client.exec(c, "BEGIN IMMEDIATE", []) {
   Err(err) -> Err(Backend("BEGIN failed: " ++ client.error_to_string(err)))
   Ok(_) -> match body() {
     Ok(x) -> match client.exec(c, "COMMIT", []) {
